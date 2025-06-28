@@ -1,15 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import ReactGA from 'react-ga4';
-
-ReactGA.initialize('G-J3J8NY59RH');
-ReactGA.send({ hitType: 'pageview', page: window.location.pathname });
-ReactGA.event({
-  category: 'Game',
-  action: 'Start Game',
-  label: 'Teams',
-  value: gameStore.gameState.teams.length
-});
 
 // Game Store with local state management
 const useGameStore = () => {
@@ -174,7 +164,7 @@ const HomeScreen = ({ gameStore }) => {
               onChange={(e) => setTeamName(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleAddTeam()}
               className="w-full p-3 border-2 border-gray-300 rounded-lg text-right focus:border-purple-500 focus:outline-none transition-colors"
-              placeholder="הכניסו שם קבוצה"
+              placeholder="תבחרו שם לקבוצה"
               dir="rtl"
             />
           </div>
@@ -370,7 +360,7 @@ const GameBoard = ({ gameStore }) => {
               className="w-full py-4 rounded-xl font-bold text-xl text-white shadow-lg hover:shadow-xl transition-all"
               style={{ backgroundColor: team.color }}
             >
-              🎮 תור של {team.name}
+               תור של {team.name}
             </motion.button>
           ))}
         </div>

@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactGA from 'react-ga4';
+
+ReactGA.initialize('G-J3J8NY59RH');
+ReactGA.send({ hitType: 'pageview', page: window.location.pathname });
+ReactGA.event({
+  category: 'Game',
+  action: 'Start Game',
+  label: 'Teams',
+  value: gameStore.gameState.teams.length
+});
 
 // Game Store with local state management
 const useGameStore = () => {

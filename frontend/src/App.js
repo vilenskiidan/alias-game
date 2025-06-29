@@ -1,23 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Game Store with local state management
-const useGameStore = () => {
-  const [gameState, setGameState] = useState({
-    teams: [],
-    currentTeam: 0,
-    gameStarted: false,
-    currentScreen: 'home', // 'home', 'game', 'turn', 'end'
-    turnScore: 0,
-    timeLeft: 60,
-    winner: null,
-    currentWord: '',
-    wordsGuessed: 0,
-    wordsSkipped: 0
-  });
-
-  // Sample Hebrew words for demo (in production, this would come from Gemini API)
-  const sampleWords = [
+// Enhanced word management
+const createWordManager = () => {
+  const HEBREW_WORDS = [
     'אבטיח', 'אגס', 'אוזן', 'אווירון', 'אוטובוס', 'אוכל', 'אופניים', 'אייל', 'אילנית', 'אמא',
     'אמש', 'אננס', 'אריה', 'אשכולית', 'אש', 'בובה', 'בולען', 'בועה', 'בית חולים', 'בית ספר',
     'בלון', 'ברווז', 'בריכה', 'בשורה', 'גדר', 'גז', 'גזר', 'גלקסיה', 'גרב', 'גרזן',
@@ -47,7 +33,40 @@ const useGameStore = () => {
     'שקע', 'עיגול', 'כספומט', 'נודניק', 'מגנט', 'יהלום', 'להב', 'לצייר', 'שימוע', 'מנדרינה',
     'רומניה', 'מחוג', 'גומי', 'דקה', 'גירפה', 'קשיש', 'רקדנית', 'קרם', 'להרוס',
     'דריכה', 'מקפצה', 'ידיים', 'ציפורניים', 'שמיכה'
-];
+  ];
+
+  // Shuffle array function
+  const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  return {
+    createGameWordList: () => shuffleArray(HEBREW_WORDS),
+    getTotalWords: () => HEBREW_WORDS.length
+  };
+};
+
+// Game Store with enhanced word management
+const useGameStore = () => {
+  const [gameState, setGameState] = useState({
+    teams: [],
+    currentTeam: 0,
+    gameStarted: false,
+    currentScreen: 'home',
+    turnScore: 0,
+    timeLeft: 60,
+    winner: null,
+    currentWord: '',
+    wordsGuessed: 0,
+    wordsSkipped: 0,
+    gameWords: [], // Words for current game
+    usedWords: [] // Words already used in current game
+  });
 
   const addTeam = (name, color) => {
     setGameState(prev => ({
@@ -57,26 +76,54 @@ const useGameStore = () => {
   };
 
   const startGame = () => {
-    setGameState(prev => ({ ...prev, gameStarted: true, currentScreen: 'game' }));
-  };
-
-  const startTurn = (teamId) => {
-    const randomWord = sampleWords[Math.floor(Math.random() * sampleWords.length)];
+    const wordManager = createWordManager();
+    const gameWords = wordManager.createGameWordList();
+    
     setGameState(prev => ({ 
       ...prev, 
-      currentTeam: teamId, 
-      currentScreen: 'turn',
-      turnScore: 0,
-      timeLeft: 60,
-      currentWord: randomWord,
-      wordsGuessed: 0,
-      wordsSkipped: 0
+      gameStarted: true, 
+      currentScreen: 'game',
+      gameWords,
+      usedWords: []
     }));
   };
 
+  const startTurn = (teamId) => {
+    setGameState(prev => {
+      // Get next unused word
+      const availableWords = prev.gameWords.filter(word => !prev.usedWords.includes(word));
+      const randomWord = availableWords.length > 0 
+        ? availableWords[Math.floor(Math.random() * availableWords.length)]
+        : 'אין עוד מילים'; // "No more words"
+
+      return { 
+        ...prev, 
+        currentTeam: teamId, 
+        currentScreen: 'turn',
+        turnScore: 0,
+        timeLeft: 60,
+        currentWord: randomWord,
+        wordsGuessed: 0,
+        wordsSkipped: 0,
+        usedWords: availableWords.length > 0 ? [...prev.usedWords, randomWord] : prev.usedWords
+      };
+    });
+  };
+
   const getNewWord = () => {
-    const randomWord = sampleWords[Math.floor(Math.random() * sampleWords.length)];
-    setGameState(prev => ({ ...prev, currentWord: randomWord }));
+    setGameState(prev => {
+      // Get next unused word
+      const availableWords = prev.gameWords.filter(word => !prev.usedWords.includes(word));
+      const randomWord = availableWords.length > 0 
+        ? availableWords[Math.floor(Math.random() * availableWords.length)]
+        : 'אין עוד מילים'; // "No more words"
+
+      return {
+        ...prev,
+        currentWord: randomWord,
+        usedWords: availableWords.length > 0 ? [...prev.usedWords, randomWord] : prev.usedWords
+      };
+    });
   };
 
   const handleGotIt = () => {
@@ -131,7 +178,9 @@ const useGameStore = () => {
       winner: null,
       currentWord: '',
       wordsGuessed: 0,
-      wordsSkipped: 0
+      wordsSkipped: 0,
+      gameWords: [],
+      usedWords: []
     });
   };
 

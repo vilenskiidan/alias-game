@@ -1,213 +1,82 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
-
-// API Service
-const apiService = {
-  // Word API
-  async getNextWord() {
-    const response = await fetch(`${API_BASE_URL}/words/next`);
-    if (!response.ok) throw new Error('Failed to get word');
-    return response.json();
-  },
-
-  async getBatchWords(count = 10) {
-    const response = await fetch(`${API_BASE_URL}/words/batch/${count}`);
-    if (!response.ok) throw new Error('Failed to get words');
-    return response.json();
-  },
-
-  // Game API
-  async createGame(initialData = {}) {
-    const response = await fetch(`${API_BASE_URL}/game/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(initialData)
-    });
-    if (!response.ok) throw new Error('Failed to create game');
-    return response.json();
-  },
-
-  async getGame(gameId) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}`);
-    if (!response.ok) throw new Error('Failed to get game');
-    return response.json();
-  },
-
-  async addTeam(gameId, teamData) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/teams`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(teamData)
-    });
-    if (!response.ok) throw new Error('Failed to add team');
-    return response.json();
-  },
-
-  async startGame(gameId) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/start`, {
-      method: 'POST'
-    });
-    if (!response.ok) throw new Error('Failed to start game');
-    return response.json();
-  },
-
-  async startTurn(gameId, teamId) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/turn/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teamId })
-    });
-    if (!response.ok) throw new Error('Failed to start turn');
-    return response.json();
-  },
-
-  async submitTurn(gameId, turnData) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/turn/submit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(turnData)
-    });
-    if (!response.ok) throw new Error('Failed to submit turn');
-    return response.json();
-  },
-
-  async resetGame(gameId) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/reset`, {
-      method: 'POST'
-    });
-    if (!response.ok) throw new Error('Failed to reset game');
-    return response.json();
-  }
-};
-
-// Game Store with API integration
+// Game Store with local state management
 const useGameStore = () => {
   const [gameState, setGameState] = useState({
-    gameId: null,
     teams: [],
     currentTeam: 0,
     gameStarted: false,
-    currentScreen: 'home',
+    currentScreen: 'home', // 'home', 'game', 'turn', 'end'
     turnScore: 0,
     timeLeft: 60,
     winner: null,
     currentWord: '',
     wordsGuessed: 0,
-    wordsSkipped: 0,
-    loading: false,
-    error: null
+    wordsSkipped: 0
   });
 
-  // Load game from localStorage on mount
-  useEffect(() => {
-    const savedGameId = localStorage.getItem('aliasGameId');
-    if (savedGameId) {
-      loadGame(savedGameId);
-    }
-  }, []);
+  // Sample Hebrew words for demo (in production, this would come from Gemini API)
+  const sampleWords = [
+    'אבטיח', 'אגס', 'אוזן', 'אווירון', 'אוטובוס', 'אוכל', 'אופניים', 'אייל', 'אילנית', 'אמא',
+    'אמש', 'אננס', 'אריה', 'אשכולית', 'אש', 'בובה', 'בולען', 'בועה', 'בית חולים', 'בית ספר',
+    'בלון', 'ברווז', 'בריכה', 'בשורה', 'גדר', 'גז', 'גזר', 'גלקסיה', 'גרב', 'גרזן',
+    'גשם', 'דבורה', 'דג', 'דגל', 'דלת', 'דלי', 'דניס', 'דרך', 'הפתעה', 'הצגה',
+    'הר געש', 'הר', 'ואזה', 'וזלין', 'וטרן', 'זבוב', 'זברה', 'זכוכית', 'זמן', 'זנב',
+    'חגורה', 'חדר כושר', 'חולצה', 'חול', 'חורף', 'חטיף', 'חלב', 'חמסין', 'חנוכייה', 'חציל',
+    'חרב', 'חרמון', 'חתול', 'טלוויזיה', 'טלפון', 'טנא', 'טניס', 'טוסיק', 'טוסט', 'יומן',
+    'יונה', 'ים', 'ינשוף', 'ירח', 'כדורגל', 'כדורסל', 'כדור', 'כובע', 'כוכב', 'כולסטרול',
+    'כותנה', 'כינור', 'כיתה', 'כפכף', 'כרית', 'לב', 'לבנה', 'לוח שנה', 'לחם', 'לימון',
+    'לילה', 'ליצן', 'לשון', 'מגבת', 'מגן דוד', 'מדורה', 'מזגן', 'מזרן', 'מטחנה', 'מטרייה',
+    'מכונית', 'מכנסיים', 'מלפפון', 'מלקחיים', 'מנגינה', 'מסך', 'מסיבה', 'מסעדה', 'מעגל', 'מעיל',
+    'מפל', 'מפת שולחן', 'מצנח', 'מצרך', 'מקבוק', 'מרפק', 'מרתון', 'משאית', 'משקפת', 'מתנה',
+    'נחש', 'נסיעה', 'נעל', 'נר', 'נשר', 'נתב"ג', 'סבון', 'סדין', 'סוכה', 'סכין',
+    'סל', 'סלט', 'סלע', 'סנאי', 'סנדוויץ', 'ספל', 'ספרייה', 'סרגל', 'סתיו', 'עגבנייה',
+    'עוגה', 'עוף', 'עורב', 'עזה', 'עין', 'עיפרון', 'עיתון', 'עלה', 'עסק', 'עץ דקל',
+    'עץ', 'פחית', 'פיל', 'פיצה', 'פלפל', 'פסל', 'פסטה', 'פקק', 'פנס', 'פנים',
+    'פסטיבל', 'פרגולה', 'פרח', 'פרפר', 'פרצוף', 'ציפור', 'צוק', 'צוללת', 'צחוק', 'צבע',
+    'צדף', 'צמח', 'צמיד', 'צנצנת', 'צפרדע', 'קוביה', 'קולנוע', 'קור', 'קטן', 'קיר',
+    'קשת', 'קלמר', 'קניון', 'קפיץ', 'קפה', 'קש', 'קצת', 'ראש', 'רוח', 'ריח',
+    'ריקוד', 'רמזור', 'רמקול', 'רעש', 'רפסודה', 'רפסיה', 'רכב', 'רעב', 'ריצה', 'רכבת',
+    'רמפה', 'רעיון', 'שאול', 'שוקולד', 'שולחן', 'שועל', 'שוק', 'שופר', 'שיער', 'שטר',
+    'שמשיה', 'שמש', 'שן', 'שנה', 'שניצל', 'שעון', 'שפם', 'שפן', 'שקד', 'שקית',
+    'שרוך', 'שש בש', 'שתייה', 'תאנה', 'תבור', 'תאטרון', 'תבשיל', 'תג', 'תיק', 'תינוק',
+    'תמר', 'תמונה', 'תנין', 'תנור', 'תקרה', 'תקווה', 'תרמוס', 'תרנגול',
+    'עגיל', 'גרביל', 'בת יענה', 'ארון', 'אגם', 'נדנדה', 'רשת', 'גרביים', 'פרחים', 'משקוף',
+    'חריצים', 'כיסא', 'נעליים', 'מדפים', 'משקפיים', 'צומת', 'מראה', 'מדרגות', 'ספר', 'קפץ',
+    'שקע', 'עיגול', 'כספומט', 'נודניק', 'מגנט', 'יהלום', 'להב', 'לצייר', 'שימוע', 'מנדרינה',
+    'רומניה', 'מחוג', 'גומי', 'דקה', 'גירפה', 'קשיש', 'רקדנית', 'קרם', 'להרוס',
+    'דריכה', 'מקפצה', 'ידיים', 'ציפורניים', 'שמיכה'
+];
 
-  const setLoading = (loading) => {
-    setGameState(prev => ({ ...prev, loading }));
+  const addTeam = (name, color) => {
+    setGameState(prev => ({
+      ...prev,
+      teams: [...prev.teams, { name, color, position: 0, id: prev.teams.length, totalScore: 0 }]
+    }));
   };
 
-  const setError = (error) => {
-    setGameState(prev => ({ ...prev, error: error?.message || error }));
+  const startGame = () => {
+    setGameState(prev => ({ ...prev, gameStarted: true, currentScreen: 'game' }));
   };
 
-  const updateGameState = (newState) => {
-    setGameState(prev => ({ ...prev, ...newState, error: null }));
+  const startTurn = (teamId) => {
+    const randomWord = sampleWords[Math.floor(Math.random() * sampleWords.length)];
+    setGameState(prev => ({ 
+      ...prev, 
+      currentTeam: teamId, 
+      currentScreen: 'turn',
+      turnScore: 0,
+      timeLeft: 60,
+      currentWord: randomWord,
+      wordsGuessed: 0,
+      wordsSkipped: 0
+    }));
   };
 
-  const loadGame = async (gameId) => {
-    try {
-      setLoading(true);
-      const response = await apiService.getGame(gameId);
-      updateGameState(response.gameState);
-      localStorage.setItem('aliasGameId', gameId);
-    } catch (error) {
-      setError(error);
-      localStorage.removeItem('aliasGameId');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createGame = async (initialData = {}) => {
-    try {
-      setLoading(true);
-      const response = await apiService.createGame(initialData);
-      updateGameState(response.gameState);
-      localStorage.setItem('aliasGameId', response.gameId);
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const addTeam = async (name, color) => {
-    try {
-      setLoading(true);
-      let currentGameId = gameState.gameId;
-      
-      // Create game if it doesn't exist
-      if (!currentGameId) {
-        const response = await apiService.createGame();
-        currentGameId = response.gameId;
-        updateGameState(response.gameState);
-        localStorage.setItem('aliasGameId', currentGameId);
-      }
-
-      const response = await apiService.addTeam(currentGameId, { name, color });
-      updateGameState(response.gameState);
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startGame = async () => {
-    try {
-      setLoading(true);
-      const response = await apiService.startGame(gameState.gameId);
-      updateGameState(response.gameState);
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startTurn = async (teamId) => {
-    try {
-      setLoading(true);
-      const [gameResponse, wordResponse] = await Promise.all([
-        apiService.startTurn(gameState.gameId, teamId),
-        apiService.getNextWord()
-      ]);
-      
-      updateGameState({
-        ...gameResponse.gameState,
-        currentWord: wordResponse.word
-      });
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getNewWord = async () => {
-    try {
-      const response = await apiService.getNextWord();
-      updateGameState({ currentWord: response.word });
-    } catch (error) {
-      setError(error);
-    }
+  const getNewWord = () => {
+    const randomWord = sampleWords[Math.floor(Math.random() * sampleWords.length)];
+    setGameState(prev => ({ ...prev, currentWord: randomWord }));
   };
 
   const handleGotIt = () => {
@@ -228,53 +97,42 @@ const useGameStore = () => {
     getNewWord();
   };
 
-  const endTurn = async () => {
-    try {
-      setLoading(true);
-      const turnData = {
-        wordsGuessed: gameState.wordsGuessed,
-        wordsSkipped: gameState.wordsSkipped
+  const endTurn = () => {
+    setGameState(prev => {
+      const newTeams = [...prev.teams];
+      const newPosition = Math.max(0, Math.min(30, newTeams[prev.currentTeam].position + prev.turnScore));
+      newTeams[prev.currentTeam].position = newPosition;
+      newTeams[prev.currentTeam].totalScore += prev.turnScore;
+      
+      const winner = newTeams.find(team => team.position >= 30);
+      
+      return {
+        ...prev,
+        teams: newTeams,
+        currentScreen: winner ? 'end' : 'game',
+        winner: winner?.name || null,
+        currentTeam: (prev.currentTeam + 1) % prev.teams.length
       };
-
-      const response = await apiService.submitTurn(gameState.gameId, turnData);
-      updateGameState(response.gameState);
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  const resetGame = async () => {
-    try {
-      setLoading(true);
-      if (gameState.gameId) {
-        const response = await apiService.resetGame(gameState.gameId);
-        updateGameState(response.gameState);
-      } else {
-        // If no game ID, just reset local state
-        setGameState({
-          gameId: null,
-          teams: [],
-          currentTeam: 0,
-          gameStarted: false,
-          currentScreen: 'home',
-          turnScore: 0,
-          timeLeft: 60,
-          winner: null,
-          currentWord: '',
-          wordsGuessed: 0,
-          wordsSkipped: 0,
-          loading: false,
-          error: null
-        });
-        localStorage.removeItem('aliasGameId');
-      }
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
+  const setTimeLeft = (time) => {
+    setGameState(prev => ({ ...prev, timeLeft: time }));
+  };
+
+  const resetGame = () => {
+    setGameState({
+      teams: [],
+      currentTeam: 0,
+      gameStarted: false,
+      currentScreen: 'home',
+      turnScore: 0,
+      timeLeft: 60,
+      winner: null,
+      currentWord: '',
+      wordsGuessed: 0,
+      wordsSkipped: 0
+    });
   };
 
   const clearError = () => setError(null);

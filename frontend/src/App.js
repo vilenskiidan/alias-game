@@ -1,213 +1,62 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// NEW IMPORTS - Add these at the top
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+import { getTranslation } from './locales/translations';
+import { sampleWords } from './locales/words';
+import LanguageToggle from './components/LanguageToggle';
 
-// API Service
-const apiService = {
-  // Word API
-  async getNextWord() {
-    const response = await fetch(`${API_BASE_URL}/words/next`);
-    if (!response.ok) throw new Error('Failed to get word');
-    return response.json();
-  },
-
-  async getBatchWords(count = 10) {
-    const response = await fetch(`${API_BASE_URL}/words/batch/${count}`);
-    if (!response.ok) throw new Error('Failed to get words');
-    return response.json();
-  },
-
-  // Game API
-  async createGame(initialData = {}) {
-    const response = await fetch(`${API_BASE_URL}/game/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(initialData)
-    });
-    if (!response.ok) throw new Error('Failed to create game');
-    return response.json();
-  },
-
-  async getGame(gameId) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}`);
-    if (!response.ok) throw new Error('Failed to get game');
-    return response.json();
-  },
-
-  async addTeam(gameId, teamData) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/teams`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(teamData)
-    });
-    if (!response.ok) throw new Error('Failed to add team');
-    return response.json();
-  },
-
-  async startGame(gameId) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/start`, {
-      method: 'POST'
-    });
-    if (!response.ok) throw new Error('Failed to start game');
-    return response.json();
-  },
-
-  async startTurn(gameId, teamId) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/turn/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teamId })
-    });
-    if (!response.ok) throw new Error('Failed to start turn');
-    return response.json();
-  },
-
-  async submitTurn(gameId, turnData) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/turn/submit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(turnData)
-    });
-    if (!response.ok) throw new Error('Failed to submit turn');
-    return response.json();
-  },
-
-  async resetGame(gameId) {
-    const response = await fetch(`${API_BASE_URL}/game/${gameId}/reset`, {
-      method: 'POST'
-    });
-    if (!response.ok) throw new Error('Failed to reset game');
-    return response.json();
-  }
-};
-
-// Game Store with API integration
+// Game Store with local state management - UPDATED for language support
 const useGameStore = () => {
+  const { language } = useLanguage(); // NEW LINE
+  
   const [gameState, setGameState] = useState({
-    gameId: null,
     teams: [],
     currentTeam: 0,
     gameStarted: false,
-    currentScreen: 'home',
+    currentScreen: 'home', // 'home', 'game', 'turn', 'end'
     turnScore: 0,
     timeLeft: 60,
     winner: null,
     currentWord: '',
     wordsGuessed: 0,
-    wordsSkipped: 0,
-    loading: false,
-    error: null
+    wordsSkipped: 0
   });
 
-  // Load game from localStorage on mount
-  useEffect(() => {
-    const savedGameId = localStorage.getItem('aliasGameId');
-    if (savedGameId) {
-      loadGame(savedGameId);
-    }
-  }, []);
-
-  const setLoading = (loading) => {
-    setGameState(prev => ({ ...prev, loading }));
+  // UPDATED: Use words from the language file instead of hardcoded array
+  const addTeam = (name, color) => {
+    setGameState(prev => ({
+      ...prev,
+      teams: [...prev.teams, { name, color, position: 0, id: prev.teams.length, totalScore: 0 }]
+    }));
   };
 
-  const setError = (error) => {
-    setGameState(prev => ({ ...prev, error: error?.message || error }));
+  const startGame = () => {
+    setGameState(prev => ({ ...prev, gameStarted: true, currentScreen: 'game' }));
   };
 
-  const updateGameState = (newState) => {
-    setGameState(prev => ({ ...prev, ...newState, error: null }));
+  const startTurn = (teamId) => {
+    // UPDATED: Get words based on current language
+    const words = sampleWords[language] || sampleWords['he'];
+    const randomWord = words[Math.floor(Math.random() * words.length)];
+    setGameState(prev => ({ 
+      ...prev, 
+      currentTeam: teamId, 
+      currentScreen: 'turn',
+      turnScore: 0,
+      timeLeft: 60,
+      currentWord: randomWord,
+      wordsGuessed: 0,
+      wordsSkipped: 0
+    }));
   };
 
-  const loadGame = async (gameId) => {
-    try {
-      setLoading(true);
-      const response = await apiService.getGame(gameId);
-      updateGameState(response.gameState);
-      localStorage.setItem('aliasGameId', gameId);
-    } catch (error) {
-      setError(error);
-      localStorage.removeItem('aliasGameId');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createGame = async (initialData = {}) => {
-    try {
-      setLoading(true);
-      const response = await apiService.createGame(initialData);
-      updateGameState(response.gameState);
-      localStorage.setItem('aliasGameId', response.gameId);
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const addTeam = async (name, color) => {
-    try {
-      setLoading(true);
-      let currentGameId = gameState.gameId;
-      
-      // Create game if it doesn't exist
-      if (!currentGameId) {
-        const response = await apiService.createGame();
-        currentGameId = response.gameId;
-        updateGameState(response.gameState);
-        localStorage.setItem('aliasGameId', currentGameId);
-      }
-
-      const response = await apiService.addTeam(currentGameId, { name, color });
-      updateGameState(response.gameState);
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startGame = async () => {
-    try {
-      setLoading(true);
-      const response = await apiService.startGame(gameState.gameId);
-      updateGameState(response.gameState);
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startTurn = async (teamId) => {
-    try {
-      setLoading(true);
-      const [gameResponse, wordResponse] = await Promise.all([
-        apiService.startTurn(gameState.gameId, teamId),
-        apiService.getNextWord()
-      ]);
-      
-      updateGameState({
-        ...gameResponse.gameState,
-        currentWord: wordResponse.word
-      });
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getNewWord = async () => {
-    try {
-      const response = await apiService.getNextWord();
-      updateGameState({ currentWord: response.word });
-    } catch (error) {
-      setError(error);
-    }
+  const getNewWord = () => {
+    // UPDATED: Get words based on current language
+    const words = sampleWords[language] || sampleWords['he'];
+    const randomWord = words[Math.floor(Math.random() * words.length)];
+    setGameState(prev => ({ ...prev, currentWord: randomWord }));
   };
 
   const handleGotIt = () => {
@@ -228,56 +77,43 @@ const useGameStore = () => {
     getNewWord();
   };
 
-  const endTurn = async () => {
-    try {
-      setLoading(true);
-      const turnData = {
-        wordsGuessed: gameState.wordsGuessed,
-        wordsSkipped: gameState.wordsSkipped
+  const endTurn = () => {
+    setGameState(prev => {
+      const newTeams = [...prev.teams];
+      const newPosition = Math.max(0, Math.min(30, newTeams[prev.currentTeam].position + prev.turnScore));
+      newTeams[prev.currentTeam].position = newPosition;
+      newTeams[prev.currentTeam].totalScore += prev.turnScore;
+      
+      const winner = newTeams.find(team => team.position >= 30);
+      
+      return {
+        ...prev,
+        teams: newTeams,
+        currentScreen: winner ? 'end' : 'game',
+        winner: winner?.name || null,
+        currentTeam: (prev.currentTeam + 1) % prev.teams.length
       };
-
-      const response = await apiService.submitTurn(gameState.gameId, turnData);
-      updateGameState(response.gameState);
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  const resetGame = async () => {
-    try {
-      setLoading(true);
-      if (gameState.gameId) {
-        const response = await apiService.resetGame(gameState.gameId);
-        updateGameState(response.gameState);
-      } else {
-        // If no game ID, just reset local state
-        setGameState({
-          gameId: null,
-          teams: [],
-          currentTeam: 0,
-          gameStarted: false,
-          currentScreen: 'home',
-          turnScore: 0,
-          timeLeft: 60,
-          winner: null,
-          currentWord: '',
-          wordsGuessed: 0,
-          wordsSkipped: 0,
-          loading: false,
-          error: null
-        });
-        localStorage.removeItem('aliasGameId');
-      }
-    } catch (error) {
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
+  const setTimeLeft = (time) => {
+    setGameState(prev => ({ ...prev, timeLeft: time }));
   };
 
-  const clearError = () => setError(null);
+  const resetGame = () => {
+    setGameState({
+      teams: [],
+      currentTeam: 0,
+      gameStarted: false,
+      currentScreen: 'home',
+      turnScore: 0,
+      timeLeft: 60,
+      winner: null,
+      currentWord: '',
+      wordsGuessed: 0,
+      wordsSkipped: 0
+    });
+  };
 
   return {
     gameState,
@@ -287,57 +123,22 @@ const useGameStore = () => {
     endTurn,
     handleGotIt,
     handleSkip,
-    resetGame,
-    clearError,
-    loadGame
+    setTimeLeft,
+    resetGame
   };
 };
 
-// Error Display Component
-const ErrorDisplay = ({ error, onClose }) => {
-  if (!error) return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -50 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -50 }}
-      className="fixed top-4 left-4 right-4 z-50 bg-red-500 text-white p-4 rounded-lg shadow-lg"
-    >
-      <div className="flex justify-between items-center">
-        <span className="font-medium">{error}</span>
-        <button
-          onClick={onClose}
-          className="text-white hover:text-gray-200 text-xl"
-        >
-          ✕
-        </button>
-      </div>
-    </motion.div>
-  );
-};
-
-// Loading Spinner Component
-const LoadingSpinner = () => (
-  <div className="flex items-center justify-center p-4">
-    <motion.div
-      animate={{ rotate: 360 }}
-      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-      className="w-8 h-8 border-4 border-white border-t-transparent rounded-full"
-    />
-  </div>
-);
-
-// Home Screen Component (Updated)
+// Home Screen Component - UPDATED with translations
 const HomeScreen = ({ gameStore }) => {
+  const { language } = useLanguage(); // NEW LINE
   const [teamName, setTeamName] = useState('');
   const [selectedColor, setSelectedColor] = useState('#3B82F6');
   
   const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
 
-  const handleAddTeam = async () => {
+  const handleAddTeam = () => {
     if (teamName.trim() && gameStore.gameState.teams.length < 4) {
-      await gameStore.addTeam(teamName.trim(), selectedColor);
+      gameStore.addTeam(teamName.trim(), selectedColor);
       setTeamName('');
       setSelectedColor(colors[gameStore.gameState.teams.length + 1] || colors[0]);
     }
@@ -349,19 +150,24 @@ const HomeScreen = ({ gameStore }) => {
       animate={{ opacity: 1 }}
       className="min-h-screen bg-gradient-to-br from-purple-500 to-pink-500 p-4 flex flex-col items-center justify-center"
     >
+      {/* NEW: Add the language toggle */}
+      <LanguageToggle />
+      
       <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
         <motion.h1 
           initial={{ scale: 0.8 }}
           animate={{ scale: 1 }}
           className="text-4xl font-bold text-center mb-8 text-gray-800"
         >
-          🎯 אליאס
+          {/* UPDATED: Use translation instead of hardcoded text */}
+          {getTranslation(language, 'gameTitle')}
         </motion.h1>
         
         <div className="space-y-6">
           <div>
             <label className="block text-right text-lg font-medium text-gray-700 mb-2">
-              שם הקבוצה
+              {/* UPDATED: Use translation */}
+              {getTranslation(language, 'teamName')}
             </label>
             <input
               type="text"
@@ -369,15 +175,15 @@ const HomeScreen = ({ gameStore }) => {
               onChange={(e) => setTeamName(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleAddTeam()}
               className="w-full p-3 border-2 border-gray-300 rounded-lg text-right focus:border-purple-500 focus:outline-none transition-colors"
-              placeholder="תבחרו שם לקבוצה"
+              placeholder={getTranslation(language, 'teamNamePlaceholder')}
               dir="rtl"
-              disabled={gameStore.gameState.loading}
             />
           </div>
 
           <div>
             <label className="block text-right text-lg font-medium text-gray-700 mb-2">
-              צבע הקבוצה
+              {/* UPDATED: Use translation */}
+              {getTranslation(language, 'teamColor')}
             </label>
             <div className="flex justify-center gap-2 flex-wrap">
               {colors.map(color => (
@@ -386,7 +192,6 @@ const HomeScreen = ({ gameStore }) => {
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setSelectedColor(color)}
-                  disabled={gameStore.gameState.loading}
                   className={`w-10 h-10 rounded-full border-4 transition-all ${
                     selectedColor === color ? 'border-gray-800 shadow-lg' : 'border-gray-300'
                   }`}
@@ -400,10 +205,11 @@ const HomeScreen = ({ gameStore }) => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={handleAddTeam}
-            disabled={!teamName.trim() || gameStore.gameState.teams.length >= 4 || gameStore.gameState.loading}
-            className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium text-lg disabled:bg-gray-400 hover:bg-purple-700 transition-colors flex items-center justify-center"
+            disabled={!teamName.trim() || gameStore.gameState.teams.length >= 4}
+            className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium text-lg disabled:bg-gray-400 hover:bg-purple-700 transition-colors"
           >
-            {gameStore.gameState.loading ? <LoadingSpinner /> : `הוסף קבוצה (${gameStore.gameState.teams.length}/4)`}
+            {/* UPDATED: Use translation */}
+            {getTranslation(language, 'addTeam')} ({gameStore.gameState.teams.length}/4)
           </motion.button>
 
           <AnimatePresence>
@@ -414,7 +220,10 @@ const HomeScreen = ({ gameStore }) => {
                 exit={{ opacity: 0, height: 0 }}
                 className="space-y-2"
               >
-                <h3 className="text-right font-medium text-gray-700">קבוצות רשומות:</h3>
+                <h3 className="text-right font-medium text-gray-700">
+                  {/* UPDATED: Use translation */}
+                  {getTranslation(language, 'registeredTeams')}
+                </h3>
                 {gameStore.gameState.teams.map((team, index) => (
                   <motion.div
                     key={index}
@@ -441,10 +250,10 @@ const HomeScreen = ({ gameStore }) => {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={gameStore.startGame}
-              disabled={gameStore.gameState.loading}
-              className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-xl hover:bg-green-700 transition-colors shadow-lg flex items-center justify-center"
+              className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-xl hover:bg-green-700 transition-colors shadow-lg"
             >
-              {gameStore.gameState.loading ? <LoadingSpinner /> : '🚀 התחל משחק!'}
+              {/* UPDATED: Use translation */}
+              {getTranslation(language, 'startGame')}
             </motion.button>
           )}
         </div>
@@ -453,13 +262,10 @@ const HomeScreen = ({ gameStore }) => {
   );
 };
 
-// Game Board Component (Updated)
+// Game Board Component - UPDATED with translations
 const GameBoard = ({ gameStore }) => {
+  const { language } = useLanguage(); // NEW LINE
   const dots = Array.from({ length: 30 }, (_, i) => i + 1);
-
-  const handleStartTurn = async (teamId) => {
-    await gameStore.startTurn(teamId);
-  };
 
   return (
     <motion.div 
@@ -467,13 +273,17 @@ const GameBoard = ({ gameStore }) => {
       animate={{ opacity: 1 }}
       className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 p-4"
     >
+      {/* NEW: Add the language toggle */}
+      <LanguageToggle />
+      
       <div className="max-w-4xl mx-auto">
         <motion.h2 
           initial={{ y: -20 }}
           animate={{ y: 0 }}
           className="text-3xl font-bold text-white text-center mb-6"
         >
-          🏁 לוח המשחק
+          {/* UPDATED: Use translation */}
+          {getTranslation(language, 'gameBoard')}
         </motion.h2>
         
         {/* Game Tracks */}
@@ -497,7 +307,8 @@ const GameBoard = ({ gameStore }) => {
                   <div>
                     <span className="font-bold text-lg">{team.name}</span>
                     <div className="text-sm text-gray-600">
-                      מיקום: {team.position}/30 | ניקוד כולל: {team.totalScore || 0}
+                      {/* UPDATED: Use translations */}
+                      {getTranslation(language, 'position')}: {team.position}/30 | {getTranslation(language, 'totalScore')}: {team.totalScore || 0}
                     </div>
                   </div>
                 </div>
@@ -507,7 +318,8 @@ const GameBoard = ({ gameStore }) => {
                     transition={{ repeat: Infinity, duration: 1.5 }}
                     className="bg-yellow-400 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold"
                   >
-                    תור נוכחי
+                    {/* UPDATED: Use translation */}
+                    {getTranslation(language, 'currentTurn')}
                   </motion.div>
                 )}
               </div>
@@ -568,12 +380,12 @@ const GameBoard = ({ gameStore }) => {
               transition={{ delay: index * 0.1 }}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => handleStartTurn(team.id)}
-              disabled={gameStore.gameState.loading}
-              className="w-full py-4 rounded-xl font-bold text-xl text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+              onClick={() => gameStore.startTurn(team.id)}
+              className="w-full py-4 rounded-xl font-bold text-xl text-white shadow-lg hover:shadow-xl transition-all"
               style={{ backgroundColor: team.color }}
             >
-              {gameStore.gameState.loading ? <LoadingSpinner /> : `תור של ${team.name}`}
+              {/* UPDATED: Use translation */}
+              {getTranslation(language, 'teamTurn')} {team.name}
             </motion.button>
           ))}
         </div>
@@ -582,8 +394,9 @@ const GameBoard = ({ gameStore }) => {
   );
 };
 
-// Turn Screen Component (Updated)
+// Turn Screen Component - UPDATED with translations
 const TurnScreen = ({ gameStore }) => {
+  const { language } = useLanguage(); // NEW LINE
   const [timeLeft, setTimeLeft] = useState(60);
 
   useEffect(() => {
@@ -611,6 +424,9 @@ const TurnScreen = ({ gameStore }) => {
       className="min-h-screen flex flex-col"
       style={{ backgroundColor: currentTeam?.color || '#3B82F6' }}
     >
+      {/* NEW: Add the language toggle */}
+      <LanguageToggle />
+      
       {/* Header */}
       <div className="text-center py-6 text-white relative">
         <motion.h2 
@@ -632,7 +448,8 @@ const TurnScreen = ({ gameStore }) => {
         
         <div className="mt-4 space-y-2">
           <div className="text-lg">
-            ניקוד: <span className="font-bold">{gameStore.gameState.turnScore}</span>
+            {/* UPDATED: Use translation */}
+            {getTranslation(language, 'score')}: <span className="font-bold">{gameStore.gameState.turnScore}</span>
           </div>
           <div className="text-sm flex justify-center gap-4">
             <span>✓ {gameStore.gameState.wordsGuessed}</span>
@@ -676,30 +493,31 @@ const TurnScreen = ({ gameStore }) => {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.95 }}
           onClick={gameStore.handleGotIt}
-          disabled={gameStore.gameState.loading}
           className="w-full bg-green-500 text-white py-6 rounded-2xl font-bold text-2xl shadow-lg active:shadow-xl transition-all flex items-center justify-center gap-3"
         >
           <span className="text-3xl">✓</span>
-          הבא
+          {/* UPDATED: Use translation */}
+          {getTranslation(language, 'gotIt')}
         </motion.button>
         
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.95 }}
           onClick={gameStore.handleSkip}
-          disabled={gameStore.gameState.loading}
           className="w-full bg-red-500 text-white py-6 rounded-2xl font-bold text-2xl shadow-lg active:shadow-xl transition-all flex items-center justify-center gap-3"
         >
           <span className="text-3xl">✗</span>
-          דלג
+          {/* UPDATED: Use translation */}
+          {getTranslation(language, 'skip')}
         </motion.button>
       </div>
     </motion.div>
   );
 };
 
-// End Screen Component (Updated)
+// End Screen Component - UPDATED with translations
 const EndScreen = ({ gameStore }) => {
+  const { language } = useLanguage(); // NEW LINE
   const winnerTeam = gameStore.gameState.teams.find(t => t.name === gameStore.gameState.winner);
   
   return (
@@ -708,6 +526,9 @@ const EndScreen = ({ gameStore }) => {
       animate={{ opacity: 1 }}
       className="min-h-screen bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center p-4"
     >
+      {/* NEW: Add the language toggle */}
+      <LanguageToggle />
+      
       <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl text-center">
         <motion.div
           initial={{ scale: 0, rotate: 180 }}
@@ -715,7 +536,10 @@ const EndScreen = ({ gameStore }) => {
           transition={{ delay: 0.2, type: "spring" }}
         >
           <div className="text-6xl mb-4">🏆</div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">🎉 מזל טוב!</h2>
+          <h2 className="text-3xl font-bold text-gray-800 mb-2">
+            {/* UPDATED: Use translation */}
+            {getTranslation(language, 'congratulations')}
+          </h2>
           <div className="flex items-center justify-center gap-2 mb-4">
             {winnerTeam && (
               <div 
@@ -724,13 +548,17 @@ const EndScreen = ({ gameStore }) => {
               />
             )}
             <p className="text-xl text-gray-600">
-              {gameStore.gameState.winner} ניצחה!
+              {/* UPDATED: Use translation */}
+              {gameStore.gameState.winner} {getTranslation(language, 'winner')}
             </p>
           </div>
           
           {/* Game Statistics */}
           <div className="bg-gray-100 rounded-lg p-4 mb-6">
-            <h3 className="font-bold text-gray-700 mb-2">סיכום המשחק</h3>
+            <h3 className="font-bold text-gray-700 mb-2">
+              {/* UPDATED: Use translation */}
+              {getTranslation(language, 'gameSummary')}
+            </h3>
             <div className="space-y-1 text-sm">
               {gameStore.gameState.teams
                 .sort((a, b) => b.position - a.position)
@@ -758,18 +586,18 @@ const EndScreen = ({ gameStore }) => {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={gameStore.resetGame}
-          disabled={gameStore.gameState.loading}
-          className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-xl hover:bg-blue-700 transition-colors shadow-lg flex items-center justify-center"
+          className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-xl hover:bg-blue-700 transition-colors shadow-lg"
         >
-          {gameStore.gameState.loading ? <LoadingSpinner /> : '🔄 משחק חדש'}
+          {/* UPDATED: Use translation */}
+          {getTranslation(language, 'newGame')}
         </motion.button>
       </div>
     </motion.div>
   );
 };
 
-// Main App Component
-const AliasGame = () => {
+// NEW: Game component wrapped with language context
+const GameWithLanguage = () => {
   const gameStore = useGameStore();
 
   const renderScreen = () => {
@@ -790,13 +618,18 @@ const AliasGame = () => {
   return (
     <div className="font-sans select-none">
       <AnimatePresence mode="wait">
-        <ErrorDisplay 
-          error={gameStore.gameState.error} 
-          onClose={gameStore.clearError} 
-        />
         {renderScreen()}
       </AnimatePresence>
     </div>
+  );
+};
+
+// UPDATED: Main App Component wrapped with Language Provider
+const AliasGame = () => {
+  return (
+    <LanguageProvider>
+      <GameWithLanguage />
+    </LanguageProvider>
   );
 };
 

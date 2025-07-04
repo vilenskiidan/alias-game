@@ -6,6 +6,8 @@ import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { getTranslation } from './locales/translations';
 import { sampleWords } from './locales/words';
 import LanguageToggle from './components/LanguageToggle';
+import PracticeGame from './components/PracticeGame';
+import { PracticeResults, Leaderboard } from './components/PracticeResults';
 
 // Game Store with local state management - UPDATED for language support
 const useGameStore = () => {
@@ -15,13 +17,15 @@ const useGameStore = () => {
     teams: [],
     currentTeam: 0,
     gameStarted: false,
-    currentScreen: 'home', // 'home', 'game', 'turn', 'end'
+    currentScreen: 'home', // 'home', 'game', 'turn', 'end', 'practice', 'practice-results', 'leaderboard'
     turnScore: 0,
     timeLeft: 60,
     winner: null,
     currentWord: '',
     wordsGuessed: 0,
-    wordsSkipped: 0
+    wordsSkipped: 0,
+    // Practice mode state
+    practiceResults: null
   });
 
   // UPDATED: Use words from the language file instead of hardcoded array
@@ -115,6 +119,27 @@ const useGameStore = () => {
     });
   };
 
+  // NEW: Practice mode methods
+  const startPractice = () => {
+    setGameState(prev => ({ ...prev, currentScreen: 'practice' }));
+  };
+
+  const finishPractice = (results) => {
+    setGameState(prev => ({ 
+      ...prev, 
+      currentScreen: 'practice-results',
+      practiceResults: results
+    }));
+  };
+
+  const showLeaderboard = () => {
+    setGameState(prev => ({ ...prev, currentScreen: 'leaderboard' }));
+  };
+
+  const backToHome = () => {
+    setGameState(prev => ({ ...prev, currentScreen: 'home', practiceResults: null }));
+  };
+
   return {
     gameState,
     addTeam,
@@ -124,13 +149,18 @@ const useGameStore = () => {
     handleGotIt,
     handleSkip,
     setTimeLeft,
-    resetGame
+    resetGame,
+    // NEW methods
+    startPractice,
+    finishPractice,
+    showLeaderboard,
+    backToHome
   };
 };
 
 // Home Screen Component - UPDATED with translations
 const HomeScreen = ({ gameStore }) => {
-  const { language } = useLanguage(); // NEW LINE
+  const { language } = useLanguage();
   const [teamName, setTeamName] = useState('');
   const [selectedColor, setSelectedColor] = useState('#3B82F6');
   
@@ -150,7 +180,6 @@ const HomeScreen = ({ gameStore }) => {
       animate={{ opacity: 1 }}
       className="min-h-screen bg-gradient-to-br from-purple-500 to-pink-500 p-4 flex flex-col items-center justify-center"
     >
-      {/* NEW: Add the language toggle */}
       <LanguageToggle />
       
       <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
@@ -159,14 +188,32 @@ const HomeScreen = ({ gameStore }) => {
           animate={{ scale: 1 }}
           className="text-4xl font-bold text-center mb-8 text-gray-800"
         >
-          {/* UPDATED: Use translation instead of hardcoded text */}
           {getTranslation(language, 'gameTitle')}
         </motion.h1>
         
         <div className="space-y-6">
+          {/* Practice Button - NEW */}
+          <motion.button
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={gameStore.startPractice}
+            className="w-full bg-orange-500 text-white py-4 rounded-lg font-bold text-xl hover:bg-orange-600 transition-colors shadow-lg flex items-center justify-center gap-3"
+          >
+            {getTranslation(language, 'practiceMode')}
+          </motion.button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-px bg-gray-300"></div>
+            <span className="text-gray-500 text-sm">{getTranslation(language, 'or')}</span>
+            <div className="flex-1 h-px bg-gray-300"></div>
+          </div>
+
+          {/* Existing team setup UI remains the same */}
           <div>
             <label className="block text-right text-lg font-medium text-gray-700 mb-2">
-              {/* UPDATED: Use translation */}
               {getTranslation(language, 'teamName')}
             </label>
             <input
@@ -182,7 +229,6 @@ const HomeScreen = ({ gameStore }) => {
 
           <div>
             <label className="block text-right text-lg font-medium text-gray-700 mb-2">
-              {/* UPDATED: Use translation */}
               {getTranslation(language, 'teamColor')}
             </label>
             <div className="flex justify-center gap-2 flex-wrap">
@@ -208,7 +254,6 @@ const HomeScreen = ({ gameStore }) => {
             disabled={!teamName.trim() || gameStore.gameState.teams.length >= 4}
             className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium text-lg disabled:bg-gray-400 hover:bg-purple-700 transition-colors"
           >
-            {/* UPDATED: Use translation */}
             {getTranslation(language, 'addTeam')} ({gameStore.gameState.teams.length}/4)
           </motion.button>
 
@@ -221,7 +266,6 @@ const HomeScreen = ({ gameStore }) => {
                 className="space-y-2"
               >
                 <h3 className="text-right font-medium text-gray-700">
-                  {/* UPDATED: Use translation */}
                   {getTranslation(language, 'registeredTeams')}
                 </h3>
                 {gameStore.gameState.teams.map((team, index) => (
@@ -252,7 +296,6 @@ const HomeScreen = ({ gameStore }) => {
               onClick={gameStore.startGame}
               className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-xl hover:bg-green-700 transition-colors shadow-lg"
             >
-              {/* UPDATED: Use translation */}
               {getTranslation(language, 'startGame')}
             </motion.button>
           )}
@@ -261,6 +304,7 @@ const HomeScreen = ({ gameStore }) => {
     </motion.div>
   );
 };
+
 
 // Game Board Component - UPDATED with translations
 const GameBoard = ({ gameStore }) => {
@@ -610,6 +654,33 @@ const GameWithLanguage = () => {
         return <TurnScreen gameStore={gameStore} />;
       case 'end':
         return <EndScreen gameStore={gameStore} />;
+      // NEW SCREENS
+      case 'practice':
+        return (
+          <PracticeGame 
+            onFinish={gameStore.finishPractice}
+            onBack={gameStore.backToHome}
+          />
+        );
+      case 'practice-results':
+        return (
+          <PracticeResults 
+            results={gameStore.gameState.practiceResults}
+            onPlayAgain={gameStore.startPractice}
+            onBack={gameStore.backToHome}
+            onShowLeaderboard={gameStore.showLeaderboard}
+          />
+        );
+      case 'leaderboard':
+        return (
+          <Leaderboard 
+            onBack={() => gameStore.gameState.practiceResults ? 
+              gameStore.finishPractice(gameStore.gameState.practiceResults) : 
+              gameStore.backToHome()
+            }
+            currentScore={gameStore.gameState.practiceResults?.score}
+          />
+        );
       default:
         return <HomeScreen gameStore={gameStore} />;
     }
@@ -622,7 +693,7 @@ const GameWithLanguage = () => {
       </AnimatePresence>
     </div>
   );
-};
+}; 
 
 // UPDATED: Main App Component wrapped with Language Provider
 const AliasGame = () => {

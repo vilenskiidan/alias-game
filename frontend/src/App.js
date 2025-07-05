@@ -7,7 +7,7 @@ import LanguageToggle from './components/LanguageToggle';
 import PracticeGame from './components/PracticeGame';
 import { PracticeResults, Leaderboard } from './components/PracticeResults';
 
-const API_BASE = 'http://ec2-16-170-219-18.eu-north-1.compute.amazonaws.com:3001/api';
+const API_BASE = 'https://api.getalias.xyz/api';
 
 const useGameStore = () => {
   const { language } = useLanguage();

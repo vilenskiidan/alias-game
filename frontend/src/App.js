@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-// NEW IMPORTS - Add these at the top
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { getTranslation } from './locales/translations';
 import { sampleWords } from './locales/words';
@@ -9,58 +7,160 @@ import LanguageToggle from './components/LanguageToggle';
 import PracticeGame from './components/PracticeGame';
 import { PracticeResults, Leaderboard } from './components/PracticeResults';
 
-// Game Store with local state management - UPDATED for language support
+const API_BASE = 'http://ec2-16-170-219-18.eu-north-1.compute.amazonaws.com:3001/api';
+
 const useGameStore = () => {
-  const { language } = useLanguage(); // NEW LINE
+  const { language } = useLanguage();
   
   const [gameState, setGameState] = useState({
+    gameId: null,
     teams: [],
     currentTeam: 0,
     gameStarted: false,
-    currentScreen: 'home', // 'home', 'game', 'turn', 'end', 'practice', 'practice-results', 'leaderboard'
+    currentScreen: 'home',
     turnScore: 0,
     timeLeft: 60,
     winner: null,
     currentWord: '',
     wordsGuessed: 0,
     wordsSkipped: 0,
-    // Practice mode state
-    practiceResults: null
+    practiceResults: null,
+    loading: false,
+    error: null
   });
 
-  // UPDATED: Use words from the language file instead of hardcoded array
-  const addTeam = (name, color) => {
-    setGameState(prev => ({
-      ...prev,
-      teams: [...prev.teams, { name, color, position: 0, id: prev.teams.length, totalScore: 0 }]
-    }));
+  // Load game from localStorage on mount
+  useEffect(() => {
+    const savedGameId = localStorage.getItem('aliasGameId');
+    if (savedGameId) {
+      loadGame(savedGameId);
+    }
+  }, []);
+
+  // API calls
+  const apiCall = async (url, options = {}) => {
+    try {
+      setGameState(prev => ({ ...prev, loading: true, error: null }));
+      const response = await fetch(`${API_BASE}${url}`, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+      });
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'API call failed');
+      }
+      
+      setGameState(prev => ({ ...prev, loading: false }));
+      return data;
+    } catch (error) {
+      setGameState(prev => ({ ...prev, loading: false, error: error.message }));
+      throw error;
+    }
   };
 
-  const startGame = () => {
-    setGameState(prev => ({ ...prev, gameStarted: true, currentScreen: 'game' }));
+  const loadGame = async (gameId) => {
+    try {
+      const data = await apiCall(`/game/${gameId}`);
+      setGameState(prev => ({
+        ...prev,
+        gameId,
+        ...data.gameState,
+        currentScreen: data.gameState.currentScreen || 'game'
+      }));
+    } catch (error) {
+      console.error('Failed to load game:', error);
+      localStorage.removeItem('aliasGameId');
+    }
   };
 
-  const startTurn = (teamId) => {
-    // UPDATED: Get words based on current language
-    const words = sampleWords[language] || sampleWords['he'];
-    const randomWord = words[Math.floor(Math.random() * words.length)];
-    setGameState(prev => ({ 
-      ...prev, 
-      currentTeam: teamId, 
-      currentScreen: 'turn',
-      turnScore: 0,
-      timeLeft: 60,
-      currentWord: randomWord,
-      wordsGuessed: 0,
-      wordsSkipped: 0
-    }));
+  const createNewGame = async () => {
+    try {
+      const data = await apiCall('/game/create', { method: 'POST' });
+      const gameId = data.gameId;
+      localStorage.setItem('aliasGameId', gameId);
+      setGameState(prev => ({
+        ...prev,
+        gameId,
+        ...data.gameState
+      }));
+      return gameId;
+    } catch (error) {
+      console.error('Failed to create game:', error);
+    }
   };
 
-  const getNewWord = () => {
-    // UPDATED: Get words based on current language
-    const words = sampleWords[language] || sampleWords['he'];
-    const randomWord = words[Math.floor(Math.random() * words.length)];
-    setGameState(prev => ({ ...prev, currentWord: randomWord }));
+  const addTeam = async (name, color) => {
+    try {
+      if (!gameState.gameId) {
+        await createNewGame();
+      }
+      
+      const data = await apiCall(`/game/${gameState.gameId}/teams`, {
+        method: 'POST',
+        body: JSON.stringify({ name, color })
+      });
+      
+      setGameState(prev => ({
+        ...prev,
+        ...data.gameState
+      }));
+    } catch (error) {
+      console.error('Failed to add team:', error);
+    }
+  };
+
+  const startGame = async () => {
+    try {
+      const data = await apiCall(`/game/${gameState.gameId}/start`, {
+        method: 'POST'
+      });
+      
+      setGameState(prev => ({
+        ...prev,
+        ...data.gameState
+      }));
+    } catch (error) {
+      console.error('Failed to start game:', error);
+    }
+  };
+
+  const startTurn = async (teamId) => {
+    try {
+      const data = await apiCall(`/game/${gameState.gameId}/turn/start`, {
+        method: 'POST',
+        body: JSON.stringify({ teamId })
+      });
+      
+      // Get a word for the turn
+      const wordData = await fetch(`${API_BASE}/words/next`);
+      const wordResult = await wordData.json();
+      
+      setGameState(prev => ({
+        ...prev,
+        ...data.gameState,
+        currentWord: wordResult.word || 'מילה',
+        wordsGuessed: 0,
+        wordsSkipped: 0,
+        turnScore: 0,
+        timeLeft: 60
+      }));
+    } catch (error) {
+      console.error('Failed to start turn:', error);
+    }
+  };
+
+  const getNewWord = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/words/next`);
+      const data = await response.json();
+      setGameState(prev => ({
+        ...prev,
+        currentWord: data.word || 'מילה'
+      }));
+    } catch (error) {
+      console.error('Failed to get new word:', error);
+    }
   };
 
   const handleGotIt = () => {
@@ -81,45 +181,57 @@ const useGameStore = () => {
     getNewWord();
   };
 
-  const endTurn = () => {
-    setGameState(prev => {
-      const newTeams = [...prev.teams];
-      const newPosition = Math.max(0, Math.min(30, newTeams[prev.currentTeam].position + prev.turnScore));
-      newTeams[prev.currentTeam].position = newPosition;
-      newTeams[prev.currentTeam].totalScore += prev.turnScore;
+  const endTurn = async () => {
+    try {
+      const data = await apiCall(`/game/${gameState.gameId}/turn/submit`, {
+        method: 'POST',
+        body: JSON.stringify({
+          wordsGuessed: gameState.wordsGuessed,
+          wordsSkipped: gameState.wordsSkipped
+        })
+      });
       
-      const winner = newTeams.find(team => team.position >= 30);
-      
-      return {
+      setGameState(prev => ({
         ...prev,
-        teams: newTeams,
-        currentScreen: winner ? 'end' : 'game',
-        winner: winner?.name || null,
-        currentTeam: (prev.currentTeam + 1) % prev.teams.length
-      };
-    });
+        ...data.gameState
+      }));
+    } catch (error) {
+      console.error('Failed to end turn:', error);
+    }
   };
 
   const setTimeLeft = (time) => {
     setGameState(prev => ({ ...prev, timeLeft: time }));
   };
 
-  const resetGame = () => {
-    setGameState({
-      teams: [],
-      currentTeam: 0,
-      gameStarted: false,
-      currentScreen: 'home',
-      turnScore: 0,
-      timeLeft: 60,
-      winner: null,
-      currentWord: '',
-      wordsGuessed: 0,
-      wordsSkipped: 0
-    });
+  const resetGame = async () => {
+    try {
+      if (gameState.gameId) {
+        await apiCall(`/game/${gameState.gameId}/reset`, { method: 'POST' });
+      }
+      localStorage.removeItem('aliasGameId');
+      setGameState({
+        gameId: null,
+        teams: [],
+        currentTeam: 0,
+        gameStarted: false,
+        currentScreen: 'home',
+        turnScore: 0,
+        timeLeft: 60,
+        winner: null,
+        currentWord: '',
+        wordsGuessed: 0,
+        wordsSkipped: 0,
+        practiceResults: null,
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      console.error('Failed to reset game:', error);
+    }
   };
 
-  // NEW: Practice mode methods
+  // Practice mode methods (unchanged)
   const startPractice = () => {
     setGameState(prev => ({ ...prev, currentScreen: 'practice' }));
   };
@@ -150,7 +262,6 @@ const useGameStore = () => {
     handleSkip,
     setTimeLeft,
     resetGame,
-    // NEW methods
     startPractice,
     finishPractice,
     showLeaderboard,

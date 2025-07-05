@@ -1,5 +1,5 @@
 // frontend/src/services/practiceApi.js
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE = 'http://ec2-16-170-219-18.eu-north-1.compute.amazonaws.com:3001/api';
 
 export const practiceApi = {
   // Submit a score to the global leaderboard

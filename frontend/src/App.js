@@ -91,24 +91,27 @@ const useGameStore = () => {
   };
 
   const addTeam = async (name, color) => {
-    try {
-      if (!gameState.gameId) {
-        await createNewGame();
-      }
-      
-      const data = await apiCall(`/game/${gameState.gameId}/teams`, {
-        method: 'POST',
-        body: JSON.stringify({ name, color })
-      });
-      
-      setGameState(prev => ({
-        ...prev,
-        ...data.gameState
-      }));
-    } catch (error) {
-      console.error('Failed to add team:', error);
+  try {
+    let currentGameId = gameState.gameId;
+    
+    if (!currentGameId) {
+      const newGameId = await createNewGame();
+      currentGameId = newGameId;
     }
-  };
+    
+    const data = await apiCall(`/game/${currentGameId}/teams`, {
+      method: 'POST',
+      body: JSON.stringify({ name, color })
+    });
+    
+    setGameState(prev => ({
+      ...prev,
+      ...data.gameState
+    }));
+  } catch (error) {
+    console.error('Failed to add team:', error);
+  }
+};
 
   const startGame = async () => {
     try {

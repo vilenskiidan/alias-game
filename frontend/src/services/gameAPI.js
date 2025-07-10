@@ -1,4 +1,4 @@
-const API_BASE = process.env.REACT_APP_API_URL || 'https://api.getalias.xyz/api';
+const API_BASE = 'https://play.getalias.xyz/api';
 
 export const gameAPI = {
   // Create a new game
@@ -59,6 +59,12 @@ export const gameAPI = {
   // Get next word
   async getNextWord() {
     const response = await fetch(`${API_BASE}/words/next`);
+    return response.json();
+  },
+
+  // Get batch of words
+  async getBatchWords(count = 20) {
+    const response = await fetch(`${API_BASE}/words/batch/${count}`);
     return response.json();
   }
 };

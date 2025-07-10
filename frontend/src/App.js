@@ -2,12 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { getTranslation } from './locales/translations';
-import { sampleWords } from './locales/words';
+import { gameAPI } from './services/gameAPI';
 import LanguageToggle from './components/LanguageToggle';
 import PracticeGame from './components/PracticeGame';
 import { PracticeResults, Leaderboard } from './components/PracticeResults';
-
-const API_BASE = 'https://api.getalias.xyz/api';
 
 const useGameStore = () => {
   const { language } = useLanguage();
@@ -26,7 +24,8 @@ const useGameStore = () => {
     wordsSkipped: 0,
     practiceResults: null,
     loading: false,
-    error: null
+    error: null,
+    wordQueue: [] // <-- Add a queue for batch words
   });
 
   // Load game from localStorage on mount
@@ -37,31 +36,9 @@ const useGameStore = () => {
     }
   }, []);
 
-  // API calls
-  const apiCall = async (url, options = {}) => {
-    try {
-      setGameState(prev => ({ ...prev, loading: true, error: null }));
-      const response = await fetch(`${API_BASE}${url}`, {
-        headers: { 'Content-Type': 'application/json' },
-        ...options
-      });
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'API call failed');
-      }
-      
-      setGameState(prev => ({ ...prev, loading: false }));
-      return data;
-    } catch (error) {
-      setGameState(prev => ({ ...prev, loading: false, error: error.message }));
-      throw error;
-    }
-  };
-
   const loadGame = async (gameId) => {
     try {
-      const data = await apiCall(`/game/${gameId}`);
+      const data = await gameAPI.getGame(gameId);
       setGameState(prev => ({
         ...prev,
         gameId,
@@ -76,7 +53,7 @@ const useGameStore = () => {
 
   const createNewGame = async () => {
     try {
-      const data = await apiCall('/game/create', { method: 'POST' });
+      const data = await gameAPI.createGame();
       const gameId = data.gameId;
       localStorage.setItem('aliasGameId', gameId);
       setGameState(prev => ({
@@ -91,33 +68,28 @@ const useGameStore = () => {
   };
 
   const addTeam = async (name, color) => {
-  try {
-    let currentGameId = gameState.gameId;
-    
-    if (!currentGameId) {
-      const newGameId = await createNewGame();
-      currentGameId = newGameId;
+    try {
+      let currentGameId = gameState.gameId;
+      
+      if (!currentGameId) {
+        const newGameId = await createNewGame();
+        currentGameId = newGameId;
+      }
+      
+      const data = await gameAPI.addTeam(currentGameId, { name, color });
+      
+      setGameState(prev => ({
+        ...prev,
+        ...data.gameState
+      }));
+    } catch (error) {
+      console.error('Failed to add team:', error);
     }
-    
-    const data = await apiCall(`/game/${currentGameId}/teams`, {
-      method: 'POST',
-      body: JSON.stringify({ name, color })
-    });
-    
-    setGameState(prev => ({
-      ...prev,
-      ...data.gameState
-    }));
-  } catch (error) {
-    console.error('Failed to add team:', error);
-  }
-};
+  };
 
   const startGame = async () => {
     try {
-      const data = await apiCall(`/game/${gameState.gameId}/start`, {
-        method: 'POST'
-      });
+      const data = await gameAPI.startGame(gameState.gameId);
       
       setGameState(prev => ({
         ...prev,
@@ -130,19 +102,14 @@ const useGameStore = () => {
 
   const startTurn = async (teamId) => {
     try {
-      const data = await apiCall(`/game/${gameState.gameId}/turn/start`, {
-        method: 'POST',
-        body: JSON.stringify({ teamId })
-      });
-      
-      // Get a word for the turn
-      const wordData = await fetch(`${API_BASE}/words/next`);
-      const wordResult = await wordData.json();
-      
+      const data = await gameAPI.startTurn(gameState.gameId, teamId);
+      // Fetch a batch of words for this turn
+      const batch = await gameAPI.getBatchWords(20);
       setGameState(prev => ({
         ...prev,
         ...data.gameState,
-        currentWord: wordResult.word || 'מילה',
+        wordQueue: batch.words || [],
+        currentWord: (batch.words && batch.words[0]) || 'מילה',
         wordsGuessed: 0,
         wordsSkipped: 0,
         turnScore: 0,
@@ -153,17 +120,16 @@ const useGameStore = () => {
     }
   };
 
-  const getNewWord = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/words/next`);
-      const data = await response.json();
-      setGameState(prev => ({
+  // Serve next word from queue
+  const getNextWordFromQueue = () => {
+    setGameState(prev => {
+      const nextQueue = prev.wordQueue.slice(1);
+      return {
         ...prev,
-        currentWord: data.word || 'מילה'
-      }));
-    } catch (error) {
-      console.error('Failed to get new word:', error);
-    }
+        wordQueue: nextQueue,
+        currentWord: nextQueue[0] || 'מילה'
+      };
+    });
   };
 
   const handleGotIt = () => {
@@ -172,7 +138,7 @@ const useGameStore = () => {
       turnScore: prev.turnScore + 1,
       wordsGuessed: prev.wordsGuessed + 1
     }));
-    getNewWord();
+    getNextWordFromQueue();
   };
 
   const handleSkip = () => {
@@ -181,17 +147,14 @@ const useGameStore = () => {
       turnScore: prev.turnScore - 1,
       wordsSkipped: prev.wordsSkipped + 1
     }));
-    getNewWord();
+    getNextWordFromQueue();
   };
 
   const endTurn = async () => {
     try {
-      const data = await apiCall(`/game/${gameState.gameId}/turn/submit`, {
-        method: 'POST',
-        body: JSON.stringify({
-          wordsGuessed: gameState.wordsGuessed,
-          wordsSkipped: gameState.wordsSkipped
-        })
+      const data = await gameAPI.submitTurnResult(gameState.gameId, {
+        wordsGuessed: gameState.wordsGuessed,
+        wordsSkipped: gameState.wordsSkipped
       });
       
       setGameState(prev => ({
@@ -210,7 +173,8 @@ const useGameStore = () => {
   const resetGame = async () => {
     try {
       if (gameState.gameId) {
-        await apiCall(`/game/${gameState.gameId}/reset`, { method: 'POST' });
+        // No reset endpoint in gameAPI, so keep this as is or add to gameAPI if needed
+        await fetch(`https://play.getalias.xyz/api/game/${gameState.gameId}/reset`, { method: 'POST' });
       }
       localStorage.removeItem('aliasGameId');
       setGameState({
@@ -227,7 +191,8 @@ const useGameStore = () => {
         wordsSkipped: 0,
         practiceResults: null,
         loading: false,
-        error: null
+        error: null,
+        wordQueue: []
       });
     } catch (error) {
       console.error('Failed to reset game:', error);

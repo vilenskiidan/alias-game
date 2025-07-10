@@ -1,205 +1,195 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { getTranslation } from './locales/translations';
-import { gameAPI } from './services/gameAPI';
+import { useWordPool } from './locales/words';
 import LanguageToggle from './components/LanguageToggle';
 import PracticeGame from './components/PracticeGame';
 import { PracticeResults, Leaderboard } from './components/PracticeResults';
 
+// Updated useGameStore hook with timer fix
 const useGameStore = () => {
   const { language } = useLanguage();
+  const wordPool = useWordPool(language);
   
-  const [gameState, setGameState] = useState({
-    gameId: null,
-    teams: [],
-    currentTeam: 0,
-    gameStarted: false,
-    currentScreen: 'home',
-    turnScore: 0,
-    timeLeft: 60,
-    winner: null,
-    currentWord: '',
-    wordsGuessed: 0,
-    wordsSkipped: 0,
-    practiceResults: null,
-    loading: false,
-    error: null,
-    wordQueue: [] // <-- Add a queue for batch words
+  const [gameState, setGameState] = useState(() => {
+    // Load from localStorage if available
+    const saved = localStorage.getItem('aliasGameState');
+    return saved ? JSON.parse(saved) : {
+      gameId: null,
+      teams: [],
+      currentTeam: 0,
+      gameStarted: false,
+      currentScreen: 'home',
+      turnScore: 0,
+      timeLeft: 60,
+      winner: null,
+      currentWord: '',
+      wordsGuessed: 0,
+      wordsSkipped: 0,
+      practiceResults: null,
+      gameSettings: {
+        winningPosition: 30,
+        turnDuration: 60
+      }
+    };
   });
 
-  // Load game from localStorage on mount
+  // Save to localStorage whenever game state changes
   useEffect(() => {
-    const savedGameId = localStorage.getItem('aliasGameId');
-    if (savedGameId) {
-      loadGame(savedGameId);
-    }
-  }, []);
+    localStorage.setItem('aliasGameState', JSON.stringify(gameState));
+  }, [gameState]);
 
-  const loadGame = async (gameId) => {
-    try {
-      const data = await gameAPI.getGame(gameId);
-      setGameState(prev => ({
-        ...prev,
-        gameId,
-        ...data.gameState,
-        currentScreen: data.gameState.currentScreen || 'game'
-      }));
-    } catch (error) {
-      console.error('Failed to load game:', error);
-      localStorage.removeItem('aliasGameId');
-    }
+  // Initialize word pool when language changes
+  useEffect(() => {
+    wordPool.initializeWords();
+  }, [language, wordPool]);
+
+  // CLIENT-SIDE FUNCTIONS (All instant!)
+  const createNewGame = () => {
+    const gameId = 'game_' + Date.now();
+    setGameState(prev => ({
+      ...prev,
+      gameId,
+      teams: [],
+      gameStarted: false,
+      currentScreen: 'home'
+    }));
+    return gameId;
   };
 
-  const createNewGame = async () => {
-    try {
-      const data = await gameAPI.createGame();
-      const gameId = data.gameId;
-      localStorage.setItem('aliasGameId', gameId);
-      setGameState(prev => ({
-        ...prev,
-        gameId,
-        ...data.gameState
-      }));
-      return gameId;
-    } catch (error) {
-      console.error('Failed to create game:', error);
-    }
-  };
-
-  const addTeam = async (name, color) => {
-    try {
-      let currentGameId = gameState.gameId;
-      
-      if (!currentGameId) {
-        const newGameId = await createNewGame();
-        currentGameId = newGameId;
-      }
-      
-      const data = await gameAPI.addTeam(currentGameId, { name, color });
-      
-      setGameState(prev => ({
-        ...prev,
-        ...data.gameState
-      }));
-    } catch (error) {
-      console.error('Failed to add team:', error);
-    }
-  };
-
-  const startGame = async () => {
-    try {
-      const data = await gameAPI.startGame(gameState.gameId);
-      
-      setGameState(prev => ({
-        ...prev,
-        ...data.gameState
-      }));
-    } catch (error) {
-      console.error('Failed to start game:', error);
-    }
-  };
-
-  const startTurn = async (teamId) => {
-    try {
-      const data = await gameAPI.startTurn(gameState.gameId, teamId);
-      // Fetch a batch of words for this turn
-      const batch = await gameAPI.getBatchWords(20);
-      setGameState(prev => ({
-        ...prev,
-        ...data.gameState,
-        wordQueue: batch.words || [],
-        currentWord: (batch.words && batch.words[0]) || 'מילה',
-        wordsGuessed: 0,
-        wordsSkipped: 0,
-        turnScore: 0,
-        timeLeft: 60
-      }));
-    } catch (error) {
-      console.error('Failed to start turn:', error);
-    }
-  };
-
-  // Serve next word from queue
-  const getNextWordFromQueue = () => {
+  const addTeam = (name, color) => {
     setGameState(prev => {
-      const nextQueue = prev.wordQueue.slice(1);
+      const newTeam = {
+        id: prev.teams.length, // This should match the array index
+        name,
+        color,
+        position: 0,
+        totalScore: 0,
+        turnsPlayed: 0
+      };
+      
       return {
         ...prev,
-        wordQueue: nextQueue,
-        currentWord: nextQueue[0] || 'מילה'
+        gameId: prev.gameId || createNewGame(),
+        teams: [...prev.teams, newTeam]
       };
     });
+  };
+
+  const startGame = () => {
+    wordPool.initializeWords(); // Prepare word pool
+    setGameState(prev => ({
+      ...prev,
+      gameStarted: true,
+      currentScreen: 'game'
+    }));
+  };
+
+  const startTurn = (teamIndex) => { // Changed parameter name for clarity
+    setGameState(prev => ({
+      ...prev,
+      currentTeam: teamIndex, // Store the array index, not the team.id
+      currentScreen: 'turn',
+      turnScore: 0,
+      timeLeft: prev.gameSettings.turnDuration,
+      wordsGuessed: 0,
+      wordsSkipped: 0,
+      currentWord: wordPool.getCurrentWord()
+    }));
   };
 
   const handleGotIt = () => {
     setGameState(prev => ({
       ...prev,
       turnScore: prev.turnScore + 1,
-      wordsGuessed: prev.wordsGuessed + 1
+      wordsGuessed: prev.wordsGuessed + 1,
+      currentWord: wordPool.getNextWord()
     }));
-    getNextWordFromQueue();
   };
 
   const handleSkip = () => {
     setGameState(prev => ({
       ...prev,
       turnScore: prev.turnScore - 1,
-      wordsSkipped: prev.wordsSkipped + 1
+      wordsSkipped: prev.wordsSkipped + 1,
+      currentWord: wordPool.getNextWord()
     }));
-    getNextWordFromQueue();
   };
 
-  const endTurn = async () => {
-    try {
-      const data = await gameAPI.submitTurnResult(gameState.gameId, {
-        wordsGuessed: gameState.wordsGuessed,
-        wordsSkipped: gameState.wordsSkipped
-      });
+  // Fixed endTurn function - only update the current team
+  const endTurn = () => {
+    setGameState(prev => {
+      const currentTeamIndex = prev.currentTeam;
+      const currentTeam = prev.teams[currentTeamIndex];
       
-      setGameState(prev => ({
+      // Calculate the final score for this turn only
+      const finalScore = prev.wordsGuessed - prev.wordsSkipped;
+      const newPosition = Math.max(0, Math.min(prev.gameSettings.winningPosition, currentTeam.position + finalScore));
+      
+      // Update ONLY the current team
+      const updatedTeams = prev.teams.map((team, index) => {
+        if (index === currentTeamIndex) {
+          return {
+            ...team,
+            position: newPosition,
+            totalScore: team.totalScore + finalScore,
+            turnsPlayed: team.turnsPlayed + 1
+          };
+        }
+        // Return other teams unchanged
+        return team;
+      });
+
+      const hasWinner = newPosition >= prev.gameSettings.winningPosition;
+      const nextTeamIndex = (currentTeamIndex + 1) % prev.teams.length;
+      
+      console.log(`Turn ended for team ${currentTeam.name}:`);
+      console.log(`- Words guessed: ${prev.wordsGuessed}`);
+      console.log(`- Words skipped: ${prev.wordsSkipped}`);
+      console.log(`- Final score: ${finalScore}`);
+      console.log(`- New position: ${newPosition}`);
+      console.log(`- Next team index: ${nextTeamIndex}`);
+      
+      return {
         ...prev,
-        ...data.gameState
-      }));
-    } catch (error) {
-      console.error('Failed to end turn:', error);
-    }
-  };
-
-  const setTimeLeft = (time) => {
-    setGameState(prev => ({ ...prev, timeLeft: time }));
-  };
-
-  const resetGame = async () => {
-    try {
-      if (gameState.gameId) {
-        // No reset endpoint in gameAPI, so keep this as is or add to gameAPI if needed
-        await fetch(`https://play.getalias.xyz/api/game/${gameState.gameId}/reset`, { method: 'POST' });
-      }
-      localStorage.removeItem('aliasGameId');
-      setGameState({
-        gameId: null,
-        teams: [],
-        currentTeam: 0,
-        gameStarted: false,
-        currentScreen: 'home',
+        teams: updatedTeams,
+        currentTeam: nextTeamIndex,
+        currentScreen: hasWinner ? 'end' : 'game',
+        winner: hasWinner ? currentTeam.name : null,
+        // Reset turn-specific values
         turnScore: 0,
-        timeLeft: 60,
-        winner: null,
-        currentWord: '',
         wordsGuessed: 0,
         wordsSkipped: 0,
-        practiceResults: null,
-        loading: false,
-        error: null,
-        wordQueue: []
-      });
-    } catch (error) {
-      console.error('Failed to reset game:', error);
-    }
+        timeLeft: prev.gameSettings.turnDuration,
+        currentWord: ''
+      };
+    });
   };
 
-  // Practice mode methods (unchanged)
+  const resetGame = () => {
+    localStorage.removeItem('aliasGameState');
+    setGameState({
+      gameId: null,
+      teams: [],
+      currentTeam: 0,
+      gameStarted: false,
+      currentScreen: 'home',
+      turnScore: 0,
+      timeLeft: 60,
+      winner: null,
+      currentWord: '',
+      wordsGuessed: 0,
+      wordsSkipped: 0,
+      practiceResults: null,
+      gameSettings: {
+        winningPosition: 30,
+        turnDuration: 60
+      }
+    });
+  };
+
+  // Practice mode functions
   const startPractice = () => {
     setGameState(prev => ({ ...prev, currentScreen: 'practice' }));
   };
@@ -222,14 +212,14 @@ const useGameStore = () => {
 
   return {
     gameState,
+    setGameState, // Expose setGameState for direct timer updates
     addTeam,
     startGame,
     startTurn,
     endTurn,
     handleGotIt,
     handleSkip,
-    setTimeLeft,
-    resetGame,
+    resetGame, // Make sure resetGame is included in the return
     startPractice,
     finishPractice,
     showLeaderboard,
@@ -237,7 +227,7 @@ const useGameStore = () => {
   };
 };
 
-// Home Screen Component - UPDATED with translations
+// Home Screen Component
 const HomeScreen = ({ gameStore }) => {
   const { language } = useLanguage();
   const [teamName, setTeamName] = useState('');
@@ -271,7 +261,7 @@ const HomeScreen = ({ gameStore }) => {
         </motion.h1>
         
         <div className="space-y-6">
-          {/* Practice Button - NEW */}
+          {/* Practice Button */}
           <motion.button
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -290,7 +280,7 @@ const HomeScreen = ({ gameStore }) => {
             <div className="flex-1 h-px bg-gray-300"></div>
           </div>
 
-          {/* Existing team setup UI remains the same */}
+          {/* Team setup */}
           <div>
             <label className="block text-right text-lg font-medium text-gray-700 mb-2">
               {getTranslation(language, 'teamName')}
@@ -384,10 +374,9 @@ const HomeScreen = ({ gameStore }) => {
   );
 };
 
-
-// Game Board Component - UPDATED with translations
+// Game Board Component
 const GameBoard = ({ gameStore }) => {
-  const { language } = useLanguage(); // NEW LINE
+  const { language } = useLanguage();
   const dots = Array.from({ length: 30 }, (_, i) => i + 1);
 
   return (
@@ -396,7 +385,6 @@ const GameBoard = ({ gameStore }) => {
       animate={{ opacity: 1 }}
       className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 p-4"
     >
-      {/* NEW: Add the language toggle */}
       <LanguageToggle />
       
       <div className="max-w-4xl mx-auto">
@@ -405,7 +393,6 @@ const GameBoard = ({ gameStore }) => {
           animate={{ y: 0 }}
           className="text-3xl font-bold text-white text-center mb-6"
         >
-          {/* UPDATED: Use translation */}
           {getTranslation(language, 'gameBoard')}
         </motion.h2>
         
@@ -430,24 +417,23 @@ const GameBoard = ({ gameStore }) => {
                   <div>
                     <span className="font-bold text-lg">{team.name}</span>
                     <div className="text-sm text-gray-600">
-                      {/* UPDATED: Use translations */}
                       {getTranslation(language, 'position')}: {team.position}/30 | {getTranslation(language, 'totalScore')}: {team.totalScore || 0}
                     </div>
                   </div>
                 </div>
-                {gameStore.gameState.currentTeam === team.id && (
+                {/* Fixed: Compare with teamIndex, not team.id */}
+                {gameStore.gameState.currentTeam === teamIndex && (
                   <motion.div
                     animate={{ scale: [1, 1.1, 1] }}
                     transition={{ repeat: Infinity, duration: 1.5 }}
                     className="bg-yellow-400 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold"
                   >
-                    {/* UPDATED: Use translation */}
                     {getTranslation(language, 'currentTurn')}
                   </motion.div>
                 )}
               </div>
               
-              {/* Track */}
+              {/* Track - rest of the component stays the same */}
               <div className="relative mb-2">
                 <div className="flex gap-1 flex-wrap">
                   {dots.map((dot, index) => (
@@ -493,21 +479,20 @@ const GameBoard = ({ gameStore }) => {
           ))}
         </div>
 
-        {/* Turn Buttons */}
+        {/* Turn Buttons - Fixed to pass team index instead of team.id */}
         <div className="space-y-3">
-          {gameStore.gameState.teams.map((team, index) => (
+          {gameStore.gameState.teams.map((team, teamIndex) => (
             <motion.button
               key={team.id}
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: index * 0.1 }}
+              transition={{ delay: teamIndex * 0.1 }}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => gameStore.startTurn(team.id)}
+              onClick={() => gameStore.startTurn(teamIndex)} // Pass teamIndex, not team.id
               className="w-full py-4 rounded-xl font-bold text-xl text-white shadow-lg hover:shadow-xl transition-all"
               style={{ backgroundColor: team.color }}
             >
-              {/* UPDATED: Use translation */}
               {getTranslation(language, 'teamTurn')} {team.name}
             </motion.button>
           ))}
@@ -517,28 +502,39 @@ const GameBoard = ({ gameStore }) => {
   );
 };
 
-// Turn Screen Component - UPDATED with translations
+// Fixed TurnScreen Component
 const TurnScreen = ({ gameStore }) => {
-  const { language } = useLanguage(); // NEW LINE
-  const [timeLeft, setTimeLeft] = useState(60);
+  const { language } = useLanguage();
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          gameStore.endTurn();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    let timer;
+    
+    if (gameStore.gameState.timeLeft > 0) {
+      timer = setInterval(() => {
+        // Use a function to get the current state value
+        gameStore.setGameState(prev => {
+          const newTimeLeft = prev.timeLeft - 1;
+          
+          if (newTimeLeft <= 0) {
+            // End the turn when time runs out
+            setTimeout(() => gameStore.endTurn(), 100);
+            return { ...prev, timeLeft: 0 };
+          }
+          
+          return { ...prev, timeLeft: newTimeLeft };
+        });
+      }, 1000);
+    }
 
-    return () => clearInterval(timer);
-  }, [gameStore]);
+    return () => {
+      if (timer) {
+        clearInterval(timer);
+      }
+    };
+  }, [gameStore.gameState.timeLeft]); // Add timeLeft as dependency
 
   const currentTeam = gameStore.gameState.teams[gameStore.gameState.currentTeam];
-  const progress = ((60 - timeLeft) / 60) * 100;
+  const progress = ((60 - gameStore.gameState.timeLeft) / 60) * 100;
 
   return (
     <motion.div 
@@ -547,7 +543,6 @@ const TurnScreen = ({ gameStore }) => {
       className="min-h-screen flex flex-col"
       style={{ backgroundColor: currentTeam?.color || '#3B82F6' }}
     >
-      {/* NEW: Add the language toggle */}
       <LanguageToggle />
       
       {/* Header */}
@@ -561,17 +556,16 @@ const TurnScreen = ({ gameStore }) => {
         </motion.h2>
         
         <motion.div
-          key={timeLeft}
+          key={gameStore.gameState.timeLeft}
           initial={{ scale: 1.2 }}
           animate={{ scale: 1 }}
-          className={`text-7xl font-bold mt-2 ${timeLeft <= 10 ? 'text-red-200' : ''}`}
+          className={`text-7xl font-bold mt-2 ${gameStore.gameState.timeLeft <= 10 ? 'text-red-200' : ''}`}
         >
-          {timeLeft}
+          {gameStore.gameState.timeLeft}
         </motion.div>
         
         <div className="mt-4 space-y-2">
           <div className="text-lg">
-            {/* UPDATED: Use translation */}
             {getTranslation(language, 'score')}: <span className="font-bold">{gameStore.gameState.turnScore}</span>
           </div>
           <div className="text-sm flex justify-center gap-4">
@@ -619,7 +613,6 @@ const TurnScreen = ({ gameStore }) => {
           className="w-full bg-green-500 text-white py-6 rounded-2xl font-bold text-2xl shadow-lg active:shadow-xl transition-all flex items-center justify-center gap-3"
         >
           <span className="text-3xl">✓</span>
-          {/* UPDATED: Use translation */}
           {getTranslation(language, 'gotIt')}
         </motion.button>
         
@@ -630,7 +623,6 @@ const TurnScreen = ({ gameStore }) => {
           className="w-full bg-red-500 text-white py-6 rounded-2xl font-bold text-2xl shadow-lg active:shadow-xl transition-all flex items-center justify-center gap-3"
         >
           <span className="text-3xl">✗</span>
-          {/* UPDATED: Use translation */}
           {getTranslation(language, 'skip')}
         </motion.button>
       </div>
@@ -638,9 +630,9 @@ const TurnScreen = ({ gameStore }) => {
   );
 };
 
-// End Screen Component - UPDATED with translations
+// End Screen Component
 const EndScreen = ({ gameStore }) => {
-  const { language } = useLanguage(); // NEW LINE
+  const { language } = useLanguage();
   const winnerTeam = gameStore.gameState.teams.find(t => t.name === gameStore.gameState.winner);
   
   return (
@@ -649,7 +641,6 @@ const EndScreen = ({ gameStore }) => {
       animate={{ opacity: 1 }}
       className="min-h-screen bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center p-4"
     >
-      {/* NEW: Add the language toggle */}
       <LanguageToggle />
       
       <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl text-center">
@@ -660,7 +651,6 @@ const EndScreen = ({ gameStore }) => {
         >
           <div className="text-6xl mb-4">🏆</div>
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
-            {/* UPDATED: Use translation */}
             {getTranslation(language, 'congratulations')}
           </h2>
           <div className="flex items-center justify-center gap-2 mb-4">
@@ -671,7 +661,6 @@ const EndScreen = ({ gameStore }) => {
               />
             )}
             <p className="text-xl text-gray-600">
-              {/* UPDATED: Use translation */}
               {gameStore.gameState.winner} {getTranslation(language, 'winner')}
             </p>
           </div>
@@ -679,7 +668,6 @@ const EndScreen = ({ gameStore }) => {
           {/* Game Statistics */}
           <div className="bg-gray-100 rounded-lg p-4 mb-6">
             <h3 className="font-bold text-gray-700 mb-2">
-              {/* UPDATED: Use translation */}
               {getTranslation(language, 'gameSummary')}
             </h3>
             <div className="space-y-1 text-sm">
@@ -711,7 +699,6 @@ const EndScreen = ({ gameStore }) => {
           onClick={gameStore.resetGame}
           className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-xl hover:bg-blue-700 transition-colors shadow-lg"
         >
-          {/* UPDATED: Use translation */}
           {getTranslation(language, 'newGame')}
         </motion.button>
       </div>
@@ -719,7 +706,7 @@ const EndScreen = ({ gameStore }) => {
   );
 };
 
-// NEW: Game component wrapped with language context
+// Main Game Component
 const GameWithLanguage = () => {
   const gameStore = useGameStore();
 
@@ -733,7 +720,6 @@ const GameWithLanguage = () => {
         return <TurnScreen gameStore={gameStore} />;
       case 'end':
         return <EndScreen gameStore={gameStore} />;
-      // NEW SCREENS
       case 'practice':
         return (
           <PracticeGame 
@@ -774,7 +760,7 @@ const GameWithLanguage = () => {
   );
 }; 
 
-// UPDATED: Main App Component wrapped with Language Provider
+// Main App Component
 const AliasGame = () => {
   return (
     <LanguageProvider>

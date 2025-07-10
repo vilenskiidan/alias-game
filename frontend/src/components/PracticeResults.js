@@ -1,9 +1,8 @@
-// frontend/src/components/PracticeResults.js
+// frontend/src/components/PracticeResults.js - CLIENT-SIDE ONLY VERSION
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getTranslation } from '../locales/translations';
-import { practiceApi } from '../services/practiceAPI';
 
 const PracticeResults = ({ results, onPlayAgain, onBack, onShowLeaderboard }) => {
   const { language } = useLanguage();
@@ -32,52 +31,32 @@ const PracticeResults = ({ results, onPlayAgain, onBack, onShowLeaderboard }) =>
     setError(null);
 
     try {
-      const response = await practiceApi.submitScore(
-        playerName.trim(),
-        results.score,
-        {
-          wordsAttempted: results.wordsAttempted,
-          accuracy: results.wordsAttempted > 0 ? 
-            Math.round((results.score / results.wordsAttempted) * 100) : 0
-        }
-      );
-
-      setGlobalRank(response.rank);
-      setScoreSubmitted(true);
-      
-      // Also save to localStorage for offline fallback
+      // Save to localStorage (local leaderboard)
       const savedScores = JSON.parse(localStorage.getItem('aliasLeaderboard') || '[]');
       const newScore = {
         name: playerName.trim(),
         score: results.score,
-        date: new Date().toLocaleDateString('he-IL')
+        date: new Date().toLocaleDateString('he-IL'),
+        timestamp: Date.now(),
+        wordsAttempted: results.wordsAttempted,
+        accuracy: results.wordsAttempted > 0 ? 
+          Math.round((results.score / results.wordsAttempted) * 100) : 0
       };
+      
       const updatedScores = [...savedScores, newScore]
         .sort((a, b) => b.score - a.score)
-        .slice(0, 10);
+        .slice(0, 10); // Keep top 10
+      
       localStorage.setItem('aliasLeaderboard', JSON.stringify(updatedScores));
+      
+      // Calculate rank
+      const rank = updatedScores.findIndex(s => s.timestamp === newScore.timestamp) + 1;
+      setGlobalRank(rank);
+      setScoreSubmitted(true);
 
     } catch (error) {
       console.error('Failed to submit score:', error);
       setError(getTranslation(language, 'saveError'));
-      
-      // Fallback to localStorage if API fails
-      try {
-        const savedScores = JSON.parse(localStorage.getItem('aliasLeaderboard') || '[]');
-        const newScore = {
-          name: playerName.trim(),
-          score: results.score,
-          date: new Date().toLocaleDateString('he-IL')
-        };
-        const updatedScores = [...savedScores, newScore]
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 10);
-        localStorage.setItem('aliasLeaderboard', JSON.stringify(updatedScores));
-        setScoreSubmitted(true);
-        setError(null);
-      } catch (localError) {
-        setError(getTranslation(language, 'saveError'));
-      }
     } finally {
       setSubmittingScore(false);
     }
@@ -128,9 +107,9 @@ const PracticeResults = ({ results, onPlayAgain, onBack, onShowLeaderboard }) =>
               animate={{ opacity: 1, scale: 1 }}
               className="bg-blue-100 border-2 border-blue-400 rounded-lg p-3 mb-4"
             >
-              <div className="text-2xl">🌍</div>
+              <div className="text-2xl">🏆</div>
               <div className="text-lg font-bold text-blue-800">
-                {getTranslation(language, 'worldRank').replace('{rank}', globalRank)}
+                #{globalRank} {getTranslation(language, 'achievements')}
               </div>
             </motion.div>
           )}
@@ -201,7 +180,7 @@ const PracticeResults = ({ results, onPlayAgain, onBack, onShowLeaderboard }) =>
           )}
         </motion.div>
 
-        {/* Global leaderboard qualification */}
+        {/* Local leaderboard qualification */}
         {qualifiesForLeaderboard && !scoreSubmitted && (
           <ScoreSubmissionForm 
             onSubmit={handleScoreSubmission}
@@ -222,7 +201,7 @@ const PracticeResults = ({ results, onPlayAgain, onBack, onShowLeaderboard }) =>
             <div className="font-bold text-gray-800 mb-1">{getTranslation(language, 'saveSuccess')}</div>
             <div className="text-sm text-gray-700">
               {getTranslation(language, 'savedToGlobal')}
-              {globalRank && ` ${getTranslation(language, 'worldRank').replace('{rank}', globalRank)}`}
+              {globalRank && ` #${globalRank} מקומית`}
             </div>
           </motion.div>
         )}
@@ -287,7 +266,7 @@ const ScoreSubmissionForm = ({ onSubmit, submitting, error, score, language }) =
       className="bg-green-100 border-2 border-green-400 rounded-xl p-4 mb-6"
     >
       <div className="text-center mb-4">
-        <div className="text-2xl mb-2">🌍</div>
+        <div className="text-2xl mb-2">🏆</div>
         <div className="font-bold text-green-800 mb-1">
           {score} {getTranslation(language, 'points')} - {getTranslation(language, 'qualificationTitle')}
         </div>
@@ -335,14 +314,12 @@ const ScoreSubmissionForm = ({ onSubmit, submitting, error, score, language }) =
   );
 };
 
-// Leaderboard Component
+// Leaderboard Component - LOCAL STORAGE ONLY
 const Leaderboard = ({ onBack, currentScore = null }) => {
   const { language } = useLanguage();
   const [scores, setScores] = useState([]);
   const [playerName, setPlayerName] = useState('');
   const [showNameInput, setShowNameInput] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadScores();
@@ -353,41 +330,26 @@ const Leaderboard = ({ onBack, currentScore = null }) => {
     }
   }, [currentScore]);
 
-  const loadScores = async () => {
+  const loadScores = () => {
     try {
-      setLoading(true);
-      const response = await practiceApi.getLeaderboard(10);
-      setScores(response.leaderboard);
-      setError(null);
-    } catch (error) {
-      console.error('Failed to load leaderboard:', error);
-      setError(getTranslation(language, 'leaderboardError'));
-      
-      // Fallback to localStorage
       const savedScores = localStorage.getItem('aliasLeaderboard');
       if (savedScores) {
         setScores(JSON.parse(savedScores));
       }
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error('Failed to load leaderboard:', error);
     }
   };
 
-  const saveScore = async () => {
+  const saveScore = () => {
     if (!playerName.trim() || !currentScore || currentScore < 4) return;
 
     try {
-      await practiceApi.submitScore(playerName.trim(), currentScore);
-      setShowNameInput(false);
-      setPlayerName('');
-      await loadScores(); // Reload leaderboard
-    } catch (error) {
-      console.error('Failed to save score:', error);
-      // Fallback to localStorage
       const newScore = {
         name: playerName.trim(),
         score: currentScore,
-        date: new Date().toLocaleDateString('he-IL')
+        date: new Date().toLocaleDateString('he-IL'),
+        timestamp: Date.now()
       };
       
       const savedScores = JSON.parse(localStorage.getItem('aliasLeaderboard') || '[]');
@@ -399,6 +361,8 @@ const Leaderboard = ({ onBack, currentScore = null }) => {
       setScores(updatedScores);
       setShowNameInput(false);
       setPlayerName('');
+    } catch (error) {
+      console.error('Failed to save score:', error);
     }
   };
 
@@ -472,102 +436,51 @@ const Leaderboard = ({ onBack, currentScore = null }) => {
           </motion.div>
         )}
 
-        {/* Loading */}
-        {loading && (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-orange-500 border-t-transparent mx-auto mb-2"></div>
-            <div>{getTranslation(language, 'loadingLeaderboard')}</div>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 text-center">
-            {error}
-          </div>
-        )}
-
         {/* Leaderboard list */}
-        {!loading && (
-          <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
-            {scores.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <div className="text-4xl mb-2">🎯</div>
-                <div>{getTranslation(language, 'noScoresYet')}</div>
-                <div className="text-sm">{getTranslation(language, 'beFirst')}</div>
-              </div>
-            ) : (
-              scores.map((score, index) => {
-                const position = getPodiumPosition(index);
-                const isCurrentPlayer = currentScore === score.score && 
-                                      playerName === score.name;
-                
-                return (
-                  <motion.div
-                    key={`${score.name}-${score.score}-${index}`}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className={`flex items-center justify-between p-4 rounded-xl border-2 ${
-                      isCurrentPlayer 
-                        ? 'border-blue-400 bg-blue-50' 
-                        : 'border-gray-200 bg-gray-50'
-                    } ${position.bg}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-2xl">{position.emoji}</div>
-                      <div>
-                        <div className={`font-bold ${position.color}`}>
-                          {score.name}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          {score.date}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="text-left">
-                      <div className={`text-2xl font-bold ${position.color}`}>
-                        {score.score}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        #{index + 1}
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })
-            )}
-          </div>
-        )}
-
-        {/* Personal stats */}
-        {scores.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="bg-gray-100 rounded-xl p-4 mb-6"
-          >
-            <div className="text-center">
-              <div className="text-sm text-gray-600 mb-2">{getTranslation(language, 'yourStats')}</div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="font-bold text-gray-800">
-                    {localStorage.getItem('aliasPersonalBest') || 0}
-                  </div>
-                  <div className="text-gray-600">{getTranslation(language, 'personalRecord')}</div>
-                </div>
-                <div>
-                  <div className="font-bold text-gray-800">
-                    {scores.filter(s => s.name === playerName).length}
-                  </div>
-                  <div className="text-gray-600">{getTranslation(language, 'achievements')}</div>
-                </div>
-              </div>
+        <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
+          {scores.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <div className="text-4xl mb-2">🎯</div>
+              <div>{getTranslation(language, 'noScoresYet')}</div>
+              <div className="text-sm">{getTranslation(language, 'beFirst')}</div>
             </div>
-          </motion.div>
-        )}
+          ) : (
+            scores.map((score, index) => {
+              const position = getPodiumPosition(index);
+              
+              return (
+                <motion.div
+                  key={`${score.name}-${score.score}-${index}`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className={`flex items-center justify-between p-4 rounded-xl border-2 border-gray-200 bg-gray-50 ${position.bg}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="text-2xl">{position.emoji}</div>
+                    <div>
+                      <div className={`font-bold ${position.color}`}>
+                        {score.name}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {score.date}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="text-left">
+                    <div className={`text-2xl font-bold ${position.color}`}>
+                      {score.score}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      #{index + 1}
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })
+          )}
+        </div>
 
         {/* Action buttons */}
         <div className="space-y-3">
@@ -583,7 +496,7 @@ const Leaderboard = ({ onBack, currentScore = null }) => {
             {getTranslation(language, 'back')}
           </motion.button>
           
-          {/* Clear leaderboard button (admin) */}
+          {/* Clear leaderboard button */}
           <motion.button
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

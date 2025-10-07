@@ -12,7 +12,7 @@ export const translations = {
     startGame: "🚀 התחל משחק!",
     
     // Game Board
-    gameBoard: "🏁 לוח המשחק",
+    gameBoard: "לוח המשחק",
     position: "מיקום",
     totalScore: "ניקוד כולל",
     currentTurn: "תור נוכחי",
@@ -118,7 +118,7 @@ export const translations = {
     startGame: "🚀 Start Game!",
     
     // Game Board
-    gameBoard: "🏁 Game Board",
+    gameBoard: "Game Board",
     position: "Position",
     totalScore: "Total Score",
     currentTurn: "Current Turn",

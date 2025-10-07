@@ -60,12 +60,22 @@ app.use('/api/practice', practiceRoutes); // NEW
 app.get('/api/health', (req, res) => {
   const practiceStats = practiceLeaderboard.getStats();
   
+  let wordCount = {};
+  try {
+    wordCount = {
+      he: wordService.getWordCount('he'),
+      en: wordService.getWordCount('en')
+    };
+  } catch (error) {
+    console.error('Failed to read word counts:', error.message);
+  }
+
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
-    wordCount: wordService.getWordCount(),
+    wordCount,
     activeGames: gameStateService.getActiveGameCount(),
     practiceScores: practiceStats.totalScores, // NEW
     practicePlayers: practiceStats.uniquePlayers // NEW

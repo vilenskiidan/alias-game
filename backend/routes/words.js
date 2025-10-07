@@ -3,10 +3,16 @@ const wordService = require('../services/wordService');
 
 const router = express.Router();
 
+const resolveLanguage = (req) => {
+  const lang = (req.query.lang || req.query.language || 'he').toLowerCase();
+  return lang === 'en' ? 'en' : 'he';
+};
+
 // Get next word
 router.get('/next', (req, res) => {
   try {
-    const result = wordService.getNextWord();
+    const language = resolveLanguage(req);
+    const result = wordService.getNextWord(language);
     res.json({
       success: true,
       ...result
@@ -22,18 +28,20 @@ router.get('/next', (req, res) => {
 // Get batch of words
 router.get('/batch/:count?', (req, res) => {
   try {
-    const count = parseInt(req.params.count) || 10;
-    
-    if (count < 1 || count > 100) {
+    const language = resolveLanguage(req);
+    const count = parseInt(req.params.count, 10) || 10;
+
+    if (count < 1 || count > 1000) {
       return res.status(400).json({
         success: false,
-        error: 'Count must be between 1 and 100'
+        error: 'Count must be between 1 and 1000'
       });
     }
 
-    const words = wordService.getBatchWords(count);
+    const words = wordService.getBatchWords(count, language);
     res.json({
       success: true,
+      language,
       words,
       count: words.length,
       requested: count
@@ -49,7 +57,8 @@ router.get('/batch/:count?', (req, res) => {
 // Get word service stats
 router.get('/stats', (req, res) => {
   try {
-    const stats = wordService.getStats();
+    const language = resolveLanguage(req);
+    const stats = wordService.getStats(language);
     res.json({
       success: true,
       stats

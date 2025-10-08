@@ -19,7 +19,12 @@ const PORT = process.env.PORT || 3001;
 app.use(helmet());
 app.use(compression());
 app.use(cors({
-  origin: ['https://play.getalias.xyz', 'http://localhost:3000'],
+  origin: [
+    'https://play.getalias.xyz',
+    'https://getalias.xyz',
+    'https://www.getalias.xyz',
+    'http://localhost:3000'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

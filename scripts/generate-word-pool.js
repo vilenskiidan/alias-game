@@ -143,51 +143,7 @@ const hebrewPhrases = [
   'מסיבת רווקות', 'חתונה משפחתית', 'יום נישואין', 'מסיבת הפתעה'
 ];
 
-const hebrewAdjectivePairs = {
-  'בית': ['גדול', 'חמים', 'חדש', 'כפרי', 'מודרני', 'מסודר'],
-  'ספר': ['חדש', 'ישן', 'נדיר', 'מרתק', 'אהוב'],
-  'כיתה': ['שקטה', 'פעילה', 'נקייה', 'מצטיינת'],
-  'חדר': ['מרווח', 'חשוך', 'מואר', 'קריר', 'נעים'],
-  'רחוב': ['שקט', 'תוסס', 'יפיפה', 'צר'],
-  'שוק': ['ססגוני', 'עמוס', 'חגיגי'],
-  'גן': ['ירוק', 'מטופח', 'פורח'],
-  'ים': ['שקט', 'סוער', 'צלול'],
-  'נהר': ['רחב', 'עמוק', 'זורם'],
-  'מוזיקה': ['קלאסית', 'מודרנית', 'שמחה'],
-  'מופע': ['מרגש', 'קצבי', 'מצחיק'],
-  'משחק': ['תחרותי', 'חברתי', 'משפחתי'],
-  'רכבת': ['מהירה', 'חשמלית', 'צפופה'],
-  'אופניים': ['חשמליים', 'מקצועיים', 'שיתופיים'],
-  'מכונית': ['חדשה', 'משפחתית', 'היברידית', 'קלאסית'],
-  'מטבח': ['מאובזר', 'כפרי', 'מודרני'],
-  'סלון': ['רחב', 'מעוצב', 'נוח'],
-  'ספה': ['רכה', 'מרופדת', 'פינתית'],
-  'עוגה': ['חגיגית', 'שוקולדית', 'גבינתית'],
-  'סלט': ['רענן', 'ים תיכוני', 'צבעוני'],
-  'כדורסל': ['מקצועי', 'קבוצתי'],
-  'כדורגל': ['ייצוגי', 'נוער', 'חופים'],
-  'מרתון': ['עירוני', 'לילי'],
-  'מחנה': ['קיץ', 'חורף', 'נוער'],
-  'שיעור': ['מיוחד', 'משלים', 'מתוגבר'],
-  'חג': ['משפחתי', 'מסורתי', 'קהילתי'],
-  'אירוע': ['מרשים', 'משמח', 'ייחודי'],
-  'קניון': ['חדש', 'עמוס', 'אופנתי'],
-  'שביל': ['מסומן', 'ירוק', 'נופי'],
-  'גן': ['לילי', 'ציבורי', 'סגור'],
-  'טיול': ['משפחתי', 'חווייתי', 'מאורגן'],
-  'עיר': ['עתיקה', 'מודרנית', 'חוף'],
-  'שיעורי בית': ['קצרים', 'ארוכים'],
-  'פרויקט': ['כיתתי', 'שנתי', 'קהילתי'],
-  'תערוכה': ['אינטראקטיבית', 'קבוצתית', 'צילומים'],
-  'קורס': ['מקוון', 'מעשי', 'מתקדם'],
-  'גשר': ['תלוי', 'ארוך', 'ישן'],
-  'כביש': ['מהיר', 'חדש', 'עמוס'],
-  'שוקולד': ['מריר', 'חלב', 'לבן'],
-  'גלידה': ['וניל', 'פירות', 'שוקולד'],
-  'ילד': ['סקרן', 'חייכן', 'אקטיבי'],
-  'ילדה': ['יצירתית', 'שמחה', 'חברותית'],
-  'משפחה': ['מאוחדת', 'גדולה', 'צעירה']
-};
+
 
 const englishSingles = [
   'lion', 'tiger', 'bear', 'wolf', 'fox', 'cat', 'dog', 'horse', 'cow', 'sheep', 'goat', 'pig', 'rhino', 'hippo', 'giraffe',
@@ -244,6 +200,20 @@ function addWords(targetSet, words) {
   });
 }
 
+function extractWordsFromTextFile() {
+  const filePath = path.join(__dirname, '..', 'backend', 'data', 'hebrew-words.txt');
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+
+  const entries = fs.readFileSync(filePath, 'utf8')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'));
+
+  return Array.from(new Set(entries));
+}
+
 function buildHebrewWords() {
   const words = new Set();
   addWords(words, hebrewSingles);
@@ -260,20 +230,44 @@ function buildHebrewWords() {
   addWords(words, hebrewBodyParts);
   addWords(words, hebrewEmotions);
   addWords(words, hebrewMusic);
+  addWords(words, extractWordsFromTextFile());
   addWords(words, hebrewPhrases);
 
-  Object.entries(hebrewAdjectivePairs).forEach(([noun, adjectives]) => {
-    adjectives.forEach(adj => {
-      const phrase = `${noun} ${adj}`.trim();
-      words.add(phrase);
-    });
+  const collectMulti = (arr) => arr
+    .filter(w => typeof w === 'string' && w.includes(' '))
+    .map(w => w.trim());
+
+  const allowedHebrewMulti = new Set([
+    ...hebrewPhrases.map(w => w.trim()),
+    ...collectMulti(hebrewSingles),
+    ...collectMulti(hebrewFoods),
+    ...collectMulti(hebrewHousehold),
+    ...collectMulti(hebrewEducation),
+    ...collectMulti(hebrewProfessions),
+    ...collectMulti(hebrewPlaces),
+    ...collectMulti(hebrewNature),
+    ...collectMulti(hebrewSports),
+    ...collectMulti(hebrewTechnology),
+    ...collectMulti(hebrewTransportation),
+    ...collectMulti(hebrewClothing),
+    ...collectMulti(hebrewBodyParts),
+    ...collectMulti(hebrewEmotions),
+    ...collectMulti(hebrewMusic),
+    ...collectMulti(extractWordsFromTextFile())
+  ]);
+
+  const sanitizedHebrew = Array.from(words).filter(word => {
+    if (!word.includes(' ')) {
+      return true;
+    }
+    return allowedHebrewMulti.has(word.trim());
   });
 
-  if (words.size < TARGET_COUNT) {
-    throw new Error(`Hebrew word list too short (${words.size}). Please add more entries.`);
+  if (sanitizedHebrew.length < TARGET_COUNT) {
+    throw new Error(`Hebrew word list too short (${sanitizedHebrew.length}). Please add more entries.`);
   }
 
-  return Array.from(words).slice(0, TARGET_COUNT);
+  return sanitizedHebrew.slice(0, TARGET_COUNT);
 }
 
 function loadEnglishDictionary(limit) {
@@ -293,24 +287,45 @@ function loadEnglishDictionary(limit) {
 function buildEnglishWords() {
   const words = new Set();
   addWords(words, englishSingles);
-  addWords(words, englishPhrases);
 
-  if (words.size < TARGET_COUNT) {
-    const needed = TARGET_COUNT - words.size;
-    const dictionaryWords = loadEnglishDictionary(needed * 2);
+  const allowedEnglishPhrases = new Set([
+    ...englishPhrases,
+    ...englishSingles.filter(word => word.includes(' '))
+  ]);
+
+  englishPhrases.forEach(phrase => {
+    if (allowedEnglishPhrases.has(phrase)) {
+      words.add(phrase);
+    }
+  });
+
+  const sanitizedEnglish = new Set(Array.from(words).filter(word => {
+    if (!word.includes(' ')) {
+      return true;
+    }
+    return allowedEnglishPhrases.has(word);
+  }));
+
+  if (sanitizedEnglish.size < TARGET_COUNT) {
+    const needed = TARGET_COUNT - sanitizedEnglish.size;
+    const dictionaryWords = loadEnglishDictionary(needed * 5)
+      .filter(word => word.length >= 3 && word.length <= 9);
+
     for (const word of dictionaryWords) {
-      words.add(word);
-      if (words.size >= TARGET_COUNT) {
+      if (!word.includes('-')) {
+        sanitizedEnglish.add(word);
+      }
+      if (sanitizedEnglish.size >= TARGET_COUNT) {
         break;
       }
     }
   }
 
-  if (words.size < TARGET_COUNT) {
-    throw new Error(`English word list too short (${words.size}). Please add more entries.`);
+  if (sanitizedEnglish.size < TARGET_COUNT) {
+    throw new Error(`English word list too short (${sanitizedEnglish.size}). Please add more entries.`);
   }
 
-  return Array.from(words).slice(0, TARGET_COUNT);
+  return Array.from(sanitizedEnglish).slice(0, TARGET_COUNT);
 }
 
 function main() {

@@ -30,6 +30,7 @@ const createInitialState = (overrides = {}) => {
     gameOver: false,
     finalRoundTurns: null,
     finalRoundLeaderId: null,
+    startingTeamId: null,
     gameSettings: { ...DEFAULT_GAME_SETTINGS, ...gameSettings },
     ...rest
   };
@@ -142,7 +143,8 @@ const useGameStore = () => {
       winner: null,
       gameOver: false,
       finalRoundTurns: null,
-      finalRoundLeaderId: null
+      finalRoundLeaderId: null,
+      startingTeamId: prev.teams[0]?.id ?? null
     }));
   }, [ensureReady, getCurrentWord, getNextWord]);
 
@@ -242,7 +244,14 @@ const useGameStore = () => {
       let finalRoundTurns = prev.finalRoundTurns;
       let finalRoundLeaderId = prev.finalRoundLeaderId;
 
-      if (reachedGoal && finalRoundTurns === null) {
+      const isStartingTeam = updatedTeam.id === prev.startingTeamId;
+      const shouldTriggerFinalRound =
+        reachedGoal &&
+        finalRoundTurns === null &&
+        isStartingTeam &&
+        teamCount > 1;
+
+      if (shouldTriggerFinalRound) {
         finalRoundTurns = updatedTeam.turnsPlayed;
         finalRoundLeaderId = updatedTeam.id;
       }
@@ -256,7 +265,12 @@ const useGameStore = () => {
       let currentScreen = 'game';
       let nextTeamIndex = (currentTeamIndex + 1) % teamCount;
 
-      if (roundComplete) {
+      if (reachedGoal && !shouldTriggerFinalRound && finalRoundTurns === null) {
+        winnerName = updatedTeam.name;
+        gameOver = true;
+        currentScreen = 'end';
+        nextTeamIndex = currentTeamIndex;
+      } else if (roundComplete) {
         const rankedTeams = [...updatedTeams].sort((a, b) => b.position - a.position);
         const winningTeam = rankedTeams[0] || null;
         winnerName = winningTeam ? winningTeam.name : null;

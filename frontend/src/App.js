@@ -116,6 +116,7 @@ const useGameStore = () => {
         color,
         position: 0,
         totalScore: 0,
+        lastTurnScore: 0,
         turnsPlayed: 0
       };
 
@@ -144,7 +145,7 @@ const useGameStore = () => {
       gameOver: false,
       finalRoundTurns: null,
       finalRoundLeaderId: null,
-      startingTeamId: prev.teams[0]?.id ?? null
+      startingTeamId: null  // Will be set when first turn is taken
     }));
   }, [ensureReady, getCurrentWord, getNextWord]);
 
@@ -159,6 +160,11 @@ const useGameStore = () => {
       if (prev.gameOver) {
         return prev;
       }
+
+      // Set starting team on first turn
+      const isFirstTurn = prev.startingTeamId === null;
+      const newStartingTeamId = isFirstTurn ? prev.teams[teamIndex]?.id : prev.startingTeamId;
+
       return {
         ...prev,
         currentTeam: teamIndex,
@@ -167,7 +173,8 @@ const useGameStore = () => {
         timeLeft: prev.gameSettings.turnDuration,
         wordsGuessed: 0,
         wordsSkipped: 0,
-        currentWord: startingWord
+        currentWord: startingWord,
+        startingTeamId: newStartingTeamId
       };
     });
   }, [ensureReady, getCurrentWord, getNextWord, gameState.gameOver]);
@@ -233,6 +240,7 @@ const useGameStore = () => {
           ...team,
           position: rawPosition,
           totalScore: team.totalScore + finalScore,
+          lastTurnScore: finalScore,
           turnsPlayed: team.turnsPlayed + 1
         };
       });
@@ -254,6 +262,7 @@ const useGameStore = () => {
       if (shouldTriggerFinalRound) {
         finalRoundTurns = updatedTeam.turnsPlayed;
         finalRoundLeaderId = updatedTeam.id;
+        console.log('🎯 Final round triggered! Starting team reached goal. Turns:', finalRoundTurns);
       }
 
       const roundComplete =
@@ -262,15 +271,31 @@ const useGameStore = () => {
 
       let winnerName = prev.winner;
       let gameOver = prev.gameOver;
-      let currentScreen = 'game';
+      let currentScreen = prev.currentScreen === 'turn' ? 'game' : prev.currentScreen;
       let nextTeamIndex = (currentTeamIndex + 1) % teamCount;
 
-      if (reachedGoal && !shouldTriggerFinalRound && finalRoundTurns === null) {
+      console.log('End turn check:', {
+        reachedGoal,
+        shouldTriggerFinalRound,
+        finalRoundTurns,
+        roundComplete,
+        isStartingTeam,
+        startingTeamId: prev.startingTeamId,
+        currentTeamId: updatedTeam.id,
+        turnsPlayed: updatedTeam.turnsPlayed
+      });
+
+      // Check if game should end
+      if (reachedGoal && !shouldTriggerFinalRound && prev.finalRoundTurns === null) {
+        // Immediate win - non-starting team reached goal first OR single team game
+        console.log('🏆 Immediate win!');
         winnerName = updatedTeam.name;
         gameOver = true;
         currentScreen = 'end';
         nextTeamIndex = currentTeamIndex;
       } else if (roundComplete) {
+        // Final round complete - all teams have equal turns
+        console.log('🏁 Final round complete!');
         const rankedTeams = [...updatedTeams].sort((a, b) => b.position - a.position);
         const winningTeam = rankedTeams[0] || null;
         winnerName = winningTeam ? winningTeam.name : null;
@@ -352,9 +377,9 @@ const useGameStore = () => {
 const HomeScreen = ({ gameStore }) => {
   const { language } = useLanguage();
   const [teamName, setTeamName] = useState('');
-  const [selectedColor, setSelectedColor] = useState('#3B82F6');
-  
-  const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
+  const [selectedColor, setSelectedColor] = useState('#E8B4B8');
+
+  const colors = ['#E8B4B8', '#A8C09A', '#A0826D', '#8B6F47', '#6B5D54', '#D4A5A5'];
 
   const handleAddTeam = () => {
     if (teamName.trim() && gameStore.gameState.teams.length < 4) {
@@ -365,18 +390,22 @@ const HomeScreen = ({ gameStore }) => {
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-screen bg-gradient-to-br from-purple-500 to-pink-500 p-4 flex flex-col items-center justify-center"
+      className="min-h-screen p-4 flex flex-col items-center justify-center"
+      style={{ backgroundColor: '#FFF8F3' }}
     >
       <LanguageToggle />
-      
-      <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
-        <motion.h1 
+
+      <div className="rounded-3xl p-8 w-full max-w-md shadow-2xl"
+        style={{ backgroundColor: '#F5E6D3' }}
+      >
+        <motion.h1
           initial={{ scale: 0.8 }}
           animate={{ scale: 1 }}
-          className="text-4xl font-bold text-center mb-8 text-gray-800"
+          className="text-4xl font-bold text-center mb-8"
+          style={{ color: '#6B5D54' }}
         >
           {getTranslation(language, 'gameTitle')}
         </motion.h1>
@@ -389,21 +418,22 @@ const HomeScreen = ({ gameStore }) => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={gameStore.startPractice}
-            className="w-full bg-orange-500 text-white py-4 rounded-lg font-bold text-xl hover:bg-orange-600 transition-colors shadow-lg flex items-center justify-center gap-3"
+            className="w-full text-white py-4 rounded-lg font-bold text-xl transition-colors shadow-lg flex items-center justify-center gap-3"
+            style={{ backgroundColor: '#A0826D' }}
           >
             {getTranslation(language, 'practiceMode')}
           </motion.button>
 
           {/* Divider */}
           <div className="flex items-center gap-4">
-            <div className="flex-1 h-px bg-gray-300"></div>
-            <span className="text-gray-500 text-sm">{getTranslation(language, 'or')}</span>
-            <div className="flex-1 h-px bg-gray-300"></div>
+            <div className="flex-1 h-px" style={{ backgroundColor: '#A0826D', opacity: 0.3 }}></div>
+            <span className="text-sm" style={{ color: '#8B6F47' }}>{getTranslation(language, 'or')}</span>
+            <div className="flex-1 h-px" style={{ backgroundColor: '#A0826D', opacity: 0.3 }}></div>
           </div>
 
           {/* Team setup */}
           <div>
-            <label className="block text-right text-lg font-medium text-gray-700 mb-2">
+            <label className="block text-right text-lg font-medium mb-2" style={{ color: '#6B5D54' }}>
               {getTranslation(language, 'teamName')}
             </label>
             <input
@@ -411,14 +441,18 @@ const HomeScreen = ({ gameStore }) => {
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleAddTeam()}
-              className="w-full p-3 border-2 border-gray-300 rounded-lg text-right focus:border-purple-500 focus:outline-none transition-colors"
+              className="w-full p-3 border-2 rounded-lg text-right focus:outline-none transition-colors"
+              style={{
+                borderColor: '#A0826D',
+                backgroundColor: '#FFF8F3'
+              }}
               placeholder={getTranslation(language, 'teamNamePlaceholder')}
               dir="rtl"
             />
           </div>
 
           <div>
-            <label className="block text-right text-lg font-medium text-gray-700 mb-2">
+            <label className="block text-right text-lg font-medium mb-2" style={{ color: '#6B5D54' }}>
               {getTranslation(language, 'teamColor')}
             </label>
             <div className="flex justify-center gap-2 flex-wrap">
@@ -428,10 +462,11 @@ const HomeScreen = ({ gameStore }) => {
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setSelectedColor(color)}
-                  className={`w-10 h-10 rounded-full border-4 transition-all ${
-                    selectedColor === color ? 'border-gray-800 shadow-lg' : 'border-gray-300'
-                  }`}
-                  style={{ backgroundColor: color }}
+                  className="w-10 h-10 rounded-full border-4 transition-all shadow-lg"
+                  style={{
+                    backgroundColor: color,
+                    borderColor: selectedColor === color ? '#6B5D54' : '#A0826D'
+                  }}
                 />
               ))}
             </div>
@@ -442,7 +477,10 @@ const HomeScreen = ({ gameStore }) => {
             whileTap={{ scale: 0.98 }}
             onClick={handleAddTeam}
             disabled={!teamName.trim() || gameStore.gameState.teams.length >= 4}
-            className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium text-lg disabled:bg-gray-400 hover:bg-purple-700 transition-colors"
+            className="w-full text-white py-3 rounded-lg font-medium text-lg transition-colors"
+            style={{
+              backgroundColor: !teamName.trim() || gameStore.gameState.teams.length >= 4 ? '#A0826D80' : '#8B6F47'
+            }}
           >
             {getTranslation(language, 'addTeam')} ({gameStore.gameState.teams.length}/4)
           </motion.button>
@@ -455,7 +493,7 @@ const HomeScreen = ({ gameStore }) => {
                 exit={{ opacity: 0, height: 0 }}
                 className="space-y-2"
               >
-                <h3 className="text-right font-medium text-gray-700">
+                <h3 className="text-right font-medium" style={{ color: '#6B5D54' }}>
                   {getTranslation(language, 'registeredTeams')}
                 </h3>
                 {gameStore.gameState.teams.map((team, index) => (
@@ -464,7 +502,8 @@ const HomeScreen = ({ gameStore }) => {
                     initial={{ x: 50, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ delay: index * 0.1 }}
-                    className="flex items-center justify-end gap-2 p-3 bg-gray-100 rounded-lg"
+                    className="flex items-center justify-end gap-2 p-3 rounded-lg"
+                    style={{ backgroundColor: '#FFF8F3' }}
                   >
                     <span className="text-right font-medium">{team.name}</span>
                     <div 
@@ -491,11 +530,11 @@ const HomeScreen = ({ gameStore }) => {
               whileTap={{ scale: 0.98 }}
               onClick={gameStore.startGame}
               disabled={gameStore.wordPoolLoading || gameStore.wordPoolError}
-              className={`w-full py-4 rounded-lg font-bold text-xl transition-colors shadow-lg ${
-                gameStore.wordPoolLoading || gameStore.wordPoolError
-                  ? 'bg-gray-400 text-white cursor-not-allowed'
-                  : 'bg-green-600 text-white hover:bg-green-700'
-              }`}
+              className="w-full py-4 rounded-lg font-bold text-xl transition-colors shadow-lg text-white"
+              style={{
+                backgroundColor: gameStore.wordPoolLoading || gameStore.wordPoolError ? '#A0826D80' : '#B8D4B8',
+                cursor: gameStore.wordPoolLoading || gameStore.wordPoolError ? 'not-allowed' : 'pointer'
+              }}
             >
               {gameStore.wordPoolLoading
                 ? language === 'he' ? 'טוען מילים...' : 'Loading words...'
@@ -515,24 +554,32 @@ const GameBoard = ({ gameStore }) => {
   const dots = Array.from({ length: winningPosition }, (_, i) => i + 1);
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 p-4"
+      className="min-h-screen p-4"
+      style={{ backgroundColor: '#FFF8F3' }}
     >
       <LanguageToggle />
-      
+
       <div className="max-w-4xl mx-auto">
-        <motion.h2 
+        <motion.h2
           initial={{ y: -20 }}
           animate={{ y: 0 }}
-          className="text-3xl font-bold text-white text-center mb-6"
+          className="text-3xl font-bold text-center mb-6"
+          style={{ color: '#6B5D54' }}
         >
           {getTranslation(language, 'gameBoard')}
         </motion.h2>
 
         {gameStore.gameState.finalRoundTurns !== null && !gameStore.gameState.gameOver && (
-          <div className="mb-4 text-center text-yellow-100 bg-yellow-600 bg-opacity-20 border border-yellow-300 border-opacity-40 rounded-xl px-4 py-3">
+          <div className="mb-4 text-center rounded-xl px-4 py-3"
+            style={{
+              color: '#8B6F47',
+              backgroundColor: '#F5E6D3',
+              border: '1px solid #A0826D'
+            }}
+          >
             {language === 'he'
               ? 'סיבוב אחרון בעיצומו — כל הקבוצות מקבלות הזדמנות לסיים את התור שלהן.'
               : 'Final round in progress — every team gets one last turn.'}
@@ -549,12 +596,13 @@ const GameBoard = ({ gameStore }) => {
               : `${cappedPosition}/${winningPosition}`;
 
             return (
-            <motion.div 
+            <motion.div
               key={team.id}
               initial={{ x: -100, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: teamIndex * 0.1 }}
-              className="bg-white rounded-2xl p-4 shadow-lg"
+              className="rounded-2xl p-4 shadow-lg"
+              style={{ backgroundColor: '#F5E6D3' }}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
@@ -565,9 +613,9 @@ const GameBoard = ({ gameStore }) => {
                     {teamIndex + 1}
                   </div>
                   <div>
-                    <span className="font-bold text-lg">{team.name}</span>
-                    <div className="text-sm text-gray-600">
-                      {getTranslation(language, 'position')}: {positionLabel} | {getTranslation(language, 'totalScore')}: {team.totalScore || 0}
+                    <span className="font-bold text-lg" style={{ color: '#6B5D54' }}>{team.name}</span>
+                    <div className="text-sm" style={{ color: '#8B6F47' }}>
+                      {getTranslation(language, 'position')}: {positionLabel} | {getTranslation(language, 'totalScore')}: {team.lastTurnScore || 0}
                     </div>
                   </div>
                 </div>
@@ -576,7 +624,8 @@ const GameBoard = ({ gameStore }) => {
                   <motion.div
                     animate={{ scale: [1, 1.1, 1] }}
                     transition={{ repeat: Infinity, duration: 1.5 }}
-                    className="bg-yellow-400 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold"
+                    className="px-3 py-1 rounded-full text-sm font-bold"
+                    style={{ backgroundColor: '#F5E6D3', color: '#8B6F47', border: '2px solid #A0826D' }}
                   >
                     {getTranslation(language, 'currentTurn')}
                   </motion.div>
@@ -592,11 +641,13 @@ const GameBoard = ({ gameStore }) => {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: index * 0.01 }}
-                      className={`w-4 h-4 rounded-full border-2 transition-all ${
-                        index < cappedPosition 
-                          ? 'border-green-500 bg-green-500 shadow-sm' 
-                          : 'border-gray-300 bg-white'
-                      } ${index === winningPosition - 1 ? 'border-yellow-500 bg-yellow-400' : ''}`}
+                      className="w-4 h-4 rounded-full border-2 transition-all shadow-sm"
+                      style={{
+                        borderColor: index === winningPosition - 1 ? '#F59E0B' :
+                                    index < cappedPosition ? '#B8D4B8' : '#A0826D',
+                        backgroundColor: index === winningPosition - 1 ? '#FCD34D' :
+                                        index < cappedPosition ? '#B8D4B8' : '#FFF8F3'
+                      }}
                     />
                   ))}
                 </div>
@@ -616,7 +667,7 @@ const GameBoard = ({ gameStore }) => {
               </div>
               
               {/* Progress bar */}
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full rounded-full h-2" style={{ backgroundColor: '#FFF8F3' }}>
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${(cappedPosition / winningPosition) * 100}%` }}
@@ -648,10 +699,11 @@ const GameBoard = ({ gameStore }) => {
               whileTap={{ scale: buttonDisabled ? 1 : 0.98 }}
                 disabled={buttonDisabled}
                 onClick={() => gameStore.startTurn(teamIndex)}
-                className={`w-full py-4 rounded-xl font-bold text-xl shadow-lg transition-all ${
-                  buttonDisabled ? 'bg-gray-400 text-white cursor-not-allowed' : 'text-white hover:shadow-xl'
-                }`}
-                style={{ backgroundColor: buttonDisabled ? '#9CA3AF' : team.color }}
+                className="w-full py-4 rounded-xl font-bold text-xl shadow-lg transition-all text-white"
+                style={{
+                  backgroundColor: buttonDisabled ? '#A0826D80' : team.color,
+                  cursor: buttonDisabled ? 'not-allowed' : 'pointer'
+                }}
               >
                 {getTranslation(language, 'teamTurn')} {team.name}
               </motion.button>
@@ -667,6 +719,7 @@ const GameBoard = ({ gameStore }) => {
 const TurnScreen = ({ gameStore }) => {
   const { language } = useLanguage();
   const timerRef = useRef(null);
+  const endTurnCalledRef = useRef(false);
 
   const { setGameState, endTurn } = gameStore;
   const {
@@ -682,38 +735,36 @@ const TurnScreen = ({ gameStore }) => {
   } = gameStore.gameState;
   const turnDuration = gameSettings?.turnDuration || DEFAULT_GAME_SETTINGS.turnDuration;
 
+  // Reset endTurn flag when entering turn screen
   useEffect(() => {
+    if (currentScreen === 'turn') {
+      endTurnCalledRef.current = false;
+    }
+  }, [currentScreen]);
+
+  // Handle time expiration separately
+  useEffect(() => {
+    if (currentScreen === 'turn' && timeLeft <= 0 && !endTurnCalledRef.current) {
+      endTurnCalledRef.current = true;
+      endTurn();
+    }
+  }, [currentScreen, timeLeft, endTurn]);
+
+  // Timer interval effect
+  useEffect(() => {
+    // Only run timer when on turn screen
     if (currentScreen !== 'turn' || timeLeft <= 0) {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-
-      if (currentScreen === 'turn' && timeLeft <= 0) {
-        endTurn();
-      }
       return undefined;
     }
 
-    if (timerRef.current) {
-      return undefined;
-    }
-
+    // Start timer interval
     timerRef.current = setInterval(() => {
       setGameState(prev => {
-        if (prev.currentScreen !== 'turn') {
+        if (prev.currentScreen !== 'turn' || prev.timeLeft <= 0) {
           return prev;
         }
 
-        const nextTime = prev.timeLeft - 1;
-        if (nextTime <= 0) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-          setTimeout(() => endTurn(), 0);
-          return { ...prev, timeLeft: 0 };
-        }
-
-        return { ...prev, timeLeft: nextTime };
+        return { ...prev, timeLeft: prev.timeLeft - 1 };
       });
     }, 1000);
 
@@ -723,7 +774,7 @@ const TurnScreen = ({ gameStore }) => {
         timerRef.current = null;
       }
     };
-  }, [currentScreen, timeLeft, setGameState, endTurn]);
+  }, [currentScreen, timeLeft, setGameState]);
 
   const currentTeamData = teams[currentTeam];
   const safeDuration = turnDuration > 0 ? turnDuration : DEFAULT_GAME_SETTINGS.turnDuration;
@@ -784,14 +835,16 @@ const TurnScreen = ({ gameStore }) => {
           initial={{ scale: 0.8, opacity: 0, rotateY: 90 }}
           animate={{ scale: 1, opacity: 1, rotateY: 0 }}
           transition={{ duration: 0.5 }}
-          className="bg-white rounded-3xl p-8 shadow-2xl max-w-sm w-full relative overflow-hidden"
+          className="rounded-3xl p-8 shadow-2xl max-w-sm w-full relative overflow-hidden"
+          style={{ backgroundColor: '#F5E6D3' }}
         >
           <motion.div
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0"
+            className="absolute inset-0 opacity-0"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(255,248,243,0.5), transparent)' }}
             animate={{ x: [-200, 400], opacity: [0, 0.3, 0] }}
             transition={{ duration: 2, repeat: Infinity, delay: 1 }}
           />
-          <div className="text-5xl font-bold text-center text-gray-800 relative z-10" dir="rtl">
+          <div className="text-5xl font-bold text-center relative z-10" dir="rtl" style={{ color: '#6B5D54' }}>
             {currentWord || 'מילה'}
           </div>
         </motion.div>
@@ -803,17 +856,19 @@ const TurnScreen = ({ gameStore }) => {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.95 }}
           onClick={gameStore.handleGotIt}
-          className="w-full bg-green-500 text-white py-6 rounded-2xl font-bold text-2xl shadow-lg active:shadow-xl transition-all flex items-center justify-center gap-3"
+          className="w-full text-white py-6 rounded-2xl font-bold text-2xl shadow-lg active:shadow-xl transition-all flex items-center justify-center gap-3"
+          style={{ backgroundColor: '#B8D4B8' }}
         >
           <span className="text-3xl">✓</span>
           {getTranslation(language, 'gotIt')}
         </motion.button>
-        
+
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.95 }}
           onClick={gameStore.handleSkip}
-          className="w-full bg-red-500 text-white py-6 rounded-2xl font-bold text-2xl shadow-lg active:shadow-xl transition-all flex items-center justify-center gap-3"
+          className="w-full text-white py-6 rounded-2xl font-bold text-2xl shadow-lg active:shadow-xl transition-all flex items-center justify-center gap-3"
+          style={{ backgroundColor: '#D4A5A5' }}
         >
           <span className="text-3xl">✗</span>
           {getTranslation(language, 'skip')}
@@ -830,38 +885,41 @@ const EndScreen = ({ gameStore }) => {
   const winningPosition = gameStore.gameState.gameSettings?.winningPosition || DEFAULT_GAME_SETTINGS.winningPosition;
   
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-screen bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center p-4"
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ backgroundColor: '#FFF8F3' }}
     >
       <LanguageToggle />
-      
-      <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl text-center">
+
+      <div className="rounded-3xl p-8 w-full max-w-md shadow-2xl text-center"
+        style={{ backgroundColor: '#F5E6D3' }}
+      >
         <motion.div
           initial={{ scale: 0, rotate: 180 }}
           animate={{ scale: 1, rotate: 0 }}
           transition={{ delay: 0.2, type: "spring" }}
         >
           <div className="text-6xl mb-4">🏆</div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">
+          <h2 className="text-3xl font-bold mb-2" style={{ color: '#6B5D54' }}>
             {getTranslation(language, 'congratulations')}
           </h2>
           <div className="flex items-center justify-center gap-2 mb-4">
             {winnerTeam && (
-              <div 
-                className="w-6 h-6 rounded-full" 
+              <div
+                className="w-6 h-6 rounded-full"
                 style={{ backgroundColor: winnerTeam.color }}
               />
             )}
-            <p className="text-xl text-gray-600">
+            <p className="text-xl" style={{ color: '#8B6F47' }}>
               {gameStore.gameState.winner} {getTranslation(language, 'winner')}
             </p>
           </div>
           
           {/* Game Statistics */}
-          <div className="bg-gray-100 rounded-lg p-4 mb-6">
-            <h3 className="font-bold text-gray-700 mb-2">
+          <div className="rounded-lg p-4 mb-6" style={{ backgroundColor: '#FFF8F3' }}>
+            <h3 className="font-bold mb-2" style={{ color: '#6B5D54' }}>
               {getTranslation(language, 'gameSummary')}
             </h3>
             <div className="space-y-1 text-sm">
@@ -899,7 +957,8 @@ const EndScreen = ({ gameStore }) => {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={gameStore.resetGame}
-          className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-xl hover:bg-blue-700 transition-colors shadow-lg"
+          className="w-full text-white py-4 rounded-lg font-bold text-xl transition-colors shadow-lg"
+          style={{ backgroundColor: '#8B6F47' }}
         >
           {getTranslation(language, 'newGame')}
         </motion.button>

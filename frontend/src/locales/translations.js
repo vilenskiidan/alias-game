@@ -14,7 +14,7 @@ export const translations = {
     // Game Board
     gameBoard: "לוח המשחק",
     position: "מיקום",
-    totalScore: "ניקוד כולל",
+    totalScore: "ניקוד מהסיבוב האחרון",
     currentTurn: "תור נוכחי",
     teamTurn: "תור של", // "תור של קבוצה 1"
     
@@ -24,10 +24,10 @@ export const translations = {
     skip: "דלג",
     
     // End Screen
-    congratulations: "🎉 מזל טוב!",
+    congratulations: "מזל טוב!",
     winner: "ניצחה!", // "קבוצה 1 ניצחה!"
     gameSummary: "סיכום המשחק",
-    newGame: "🔄 משחק חדש",
+    newGame: "משחק חדש",
     
     // Language Toggle
     languageButton: "English",
@@ -120,7 +120,7 @@ export const translations = {
     // Game Board
     gameBoard: "Game Board",
     position: "Position",
-    totalScore: "Total Score",
+    totalScore: "Score From Last Turn",
     currentTurn: "Current Turn",
     teamTurn: "Turn for", // "Turn for Team 1"
     
@@ -133,7 +133,7 @@ export const translations = {
     congratulations: "🎉 Congratulations!",
     winner: "Wins!", // "Team 1 Wins!"
     gameSummary: "Game Summary",
-    newGame: "🔄 New Game",
+    newGame: "New Game",
     
     // Language Toggle
     languageButton: "עברית",

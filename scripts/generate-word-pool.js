@@ -72,12 +72,12 @@ const hebrewNature = [
 ];
 
 const hebrewSports = [
-  'כדורגל', 'כדורסל', 'כדורעף', 'כדוריד', 'טניס', 'בדמינטון', 'טניס שולחן', 'הוקי קרח', 'הוקי שדה', 'בייסבול', 'סופטבול',
-  'פוטבול', 'רגבי', 'אתלטיקה', 'ריצת שדה', 'מרתון', 'טריאתלון', 'אולטרה מרתון', 'רכיבת כביש', 'רכיבת שטח', ' רכיבת הרים',
-  'שחייה', 'קפיצה למים', 'כדורמים', 'חתירה', 'קיאקים', 'קיאקים בים', 'גלישת גלים', 'גלישת רוח', 'גלישת עפיפונים',
-  'סאפ', 'טיפוס קירות', 'טיפוס הרים', 'אגרוף', 'קיקבוקס', 'ג׳ודו', 'קראטה', 'טאקוונדו', 'אייקידו', 'אבקות', 'סומו',
-  'סיף', 'ירי בחץ וקשת', 'ירי ברובה', 'ביאתלון', 'החלקה אומנותית', 'החלקה מהירה', 'סקי אלפיני', 'סקי קרוס קאונטרי',
-  'סנובורד', 'סקייטבורד', 'גלגיליות', 'רולרבליידס', 'ספורט מוטורי', 'מרוץ מכוניות', 'ראלי', 'קארטינג', 'באולינג',
+  'כדורגל', 'כדורסל', 'כדורעף', 'כדוריד', 'טניס', 'פאדל', 'טניס שולחן', 'הוקי קרח', 'זירת איגרוף', 'בייסבול', 'סופטבול',
+  'פוטבול', 'שוער', 'אתלטיקה', 'ריצת שדה', 'מרתון', 'טריאתלון', 'אולטרה מרתון', 'רכיבת כביש', 'רכיבת שטח', 'גול',
+  'שחייה', 'קפיצה למים', 'כדורמים', 'חתירה', 'קיאקים', 'כדורעף חופים', 'גלישת גלים', 'גלישת רוח', 'גלישת קיט',
+  'סאפ', 'טיפוס קירות', 'טיפוס הרים', 'אגרוף', 'קיקבוקס', 'ג׳ודו', 'קראטה', 'טאקוונדו', 'כפפות אגרוף', 'היאבקות', 'סומו',
+  'סיף', 'בחץ וקשת', 'ירי ברובה', 'כדור יוגה', 'החלקה אומנותית', 'החלקה על הקרח', 'פוציבולי', 'סקי',
+  'סנובורד', 'סקייטבורד', 'גלגיליות', 'רולרבליידס', 'רכיבה על סוסים', 'מרוץ מכוניות', 'פורמולה 1', 'קארטינג', 'באולינג',
   'ביליארד', 'שחמט', 'דמקה', 'ברידג׳'
 ];
 
@@ -216,6 +216,8 @@ function extractWordsFromTextFile() {
 
 function buildHebrewWords() {
   const words = new Set();
+  const textFileWords = extractWordsFromTextFile(); // Cache the result
+
   addWords(words, hebrewSingles);
   addWords(words, hebrewFoods);
   addWords(words, hebrewHousehold);
@@ -230,31 +232,39 @@ function buildHebrewWords() {
   addWords(words, hebrewBodyParts);
   addWords(words, hebrewEmotions);
   addWords(words, hebrewMusic);
-  addWords(words, extractWordsFromTextFile());
+  addWords(words, textFileWords);
   addWords(words, hebrewPhrases);
 
   const collectMulti = (arr) => arr
     .filter(w => typeof w === 'string' && w.includes(' '))
     .map(w => w.trim());
 
-  const allowedHebrewMulti = new Set([
-    ...hebrewPhrases.map(w => w.trim()),
-    ...collectMulti(hebrewSingles),
-    ...collectMulti(hebrewFoods),
-    ...collectMulti(hebrewHousehold),
-    ...collectMulti(hebrewEducation),
-    ...collectMulti(hebrewProfessions),
-    ...collectMulti(hebrewPlaces),
-    ...collectMulti(hebrewNature),
-    ...collectMulti(hebrewSports),
-    ...collectMulti(hebrewTechnology),
-    ...collectMulti(hebrewTransportation),
-    ...collectMulti(hebrewClothing),
-    ...collectMulti(hebrewBodyParts),
-    ...collectMulti(hebrewEmotions),
-    ...collectMulti(hebrewMusic),
-    ...collectMulti(extractWordsFromTextFile())
-  ]);
+  // Collect all allowed multi-word phrases in one pass
+  const allHebrewArrays = [
+    hebrewPhrases,
+    hebrewSingles,
+    hebrewFoods,
+    hebrewHousehold,
+    hebrewEducation,
+    hebrewProfessions,
+    hebrewPlaces,
+    hebrewNature,
+    hebrewSports,
+    hebrewTechnology,
+    hebrewTransportation,
+    hebrewClothing,
+    hebrewBodyParts,
+    hebrewEmotions,
+    hebrewMusic,
+    textFileWords
+  ];
+
+  const allowedHebrewMulti = new Set();
+  for (const arr of allHebrewArrays) {
+    for (const word of collectMulti(arr)) {
+      allowedHebrewMulti.add(word);
+    }
+  }
 
   const sanitizedHebrew = Array.from(words).filter(word => {
     if (!word.includes(' ')) {
@@ -271,15 +281,31 @@ function buildHebrewWords() {
 }
 
 function loadEnglishDictionary(limit) {
-  const dictPath = '/usr/share/dict/words';
-  if (!fs.existsSync(dictPath)) {
+  // Try multiple common dictionary paths for cross-platform compatibility
+  const possiblePaths = [
+    '/usr/share/dict/words',           // Linux/Unix
+    '/usr/dict/words',                 // Alternative Linux
+    'C:\\Windows\\System32\\drivers\\etc\\words', // Windows (rare)
+  ];
+
+  let dictPath = null;
+  for (const path of possiblePaths) {
+    if (fs.existsSync(path)) {
+      dictPath = path;
+      break;
+    }
+  }
+
+  if (!dictPath) {
+    console.warn('No system dictionary found. English words will be limited to hardcoded list.');
     return [];
   }
+
   const raw = fs.readFileSync(dictPath, 'utf8')
     .split('\n')
     .map(line => line.trim().toLowerCase())
     .filter(Boolean)
-    .filter(word => /^[a-z]+$/.test(word));
+    .filter(word => /^[a-z]+$/.test(word) && word.length >= 3 && word.length <= 9);
 
   return limit ? raw.slice(0, limit) : raw;
 }
@@ -287,17 +313,13 @@ function loadEnglishDictionary(limit) {
 function buildEnglishWords() {
   const words = new Set();
   addWords(words, englishSingles);
+  addWords(words, englishPhrases);
 
+  // Filter to only allow valid multi-word entries
   const allowedEnglishPhrases = new Set([
     ...englishPhrases,
     ...englishSingles.filter(word => word.includes(' '))
   ]);
-
-  englishPhrases.forEach(phrase => {
-    if (allowedEnglishPhrases.has(phrase)) {
-      words.add(phrase);
-    }
-  });
 
   const sanitizedEnglish = new Set(Array.from(words).filter(word => {
     if (!word.includes(' ')) {
@@ -306,10 +328,10 @@ function buildEnglishWords() {
     return allowedEnglishPhrases.has(word);
   }));
 
+  // If we need more words, load from system dictionary
   if (sanitizedEnglish.size < TARGET_COUNT) {
     const needed = TARGET_COUNT - sanitizedEnglish.size;
-    const dictionaryWords = loadEnglishDictionary(needed * 5)
-      .filter(word => word.length >= 3 && word.length <= 9);
+    const dictionaryWords = loadEnglishDictionary(needed);
 
     for (const word of dictionaryWords) {
       if (!word.includes('-')) {

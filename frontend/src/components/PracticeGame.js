@@ -108,9 +108,17 @@ const PracticeGame = ({ onFinish, onBack }) => {
   const [shuffledWords, setShuffledWords] = useState([]);
 
   useEffect(() => {
-    // Shuffle words when component mounts
-    const shuffled = [...PRACTICE_WORDS].sort(() => Math.random() - 0.5);
-    setShuffledWords(shuffled);
+    // Shuffle words when component mounts using Fisher-Yates algorithm
+    const shuffle = (array) => {
+      const shuffled = [...array];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    };
+
+    setShuffledWords(shuffle(PRACTICE_WORDS));
   }, []);
 
   // Timer effect
@@ -232,8 +240,8 @@ const PracticeGame = ({ onFinish, onBack }) => {
   };
 
   if (shuffledWords.length === 0) {
-    return <div className="min-h-screen bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
-      <div className="text-white text-xl">{getTranslation(language, 'loading')}</div>
+    return <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFF8F3' }}>
+      <div className="text-xl" style={{ color: '#6B5D54' }}>{getTranslation(language, 'loading')}</div>
     </div>;
   }
 
@@ -243,29 +251,32 @@ const PracticeGame = ({ onFinish, onBack }) => {
   if (!gameState.isPlaying) {
     // Start screen
     return (
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="min-h-screen bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center p-4"
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{ backgroundColor: '#FFF8F3' }}
       >
-        <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
+        <div className="rounded-3xl p-8 w-full max-w-md shadow-2xl"
+          style={{ backgroundColor: '#F5E6D3' }}
+        >
           <motion.div
             initial={{ scale: 0.8 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2 }}
           >
             <div className="text-6xl mb-4">🎯</div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">
+            <h2 className="text-3xl font-bold mb-4" style={{ color: '#6B5D54' }}>
               {getTranslation(language, 'practiceTitle')}
             </h2>
-            <p className="text-gray-600 mb-6 text-lg leading-relaxed">
+            <p className="mb-6 text-lg leading-relaxed" style={{ color: '#8B6F47' }}>
               {getTranslation(language, 'practiceDescription')}<br/>
               {getTranslation(language, 'practiceTimer')}<br/>
               {getTranslation(language, 'practiceHints')}
             </p>
-            
-            <div className="bg-gray-100 rounded-lg p-4 mb-6 text-sm">
-              <div className="font-bold mb-2">{getTranslation(language, 'scoringSystem')}</div>
+
+            <div className="rounded-lg p-4 mb-6 text-sm" style={{ backgroundColor: '#FFF8F3' }}>
+              <div className="font-bold mb-2" style={{ color: '#6B5D54' }}>{getTranslation(language, 'scoringSystem')}</div>
               <div className={`space-y-1 ${language === 'he' ? 'text-right' : 'text-left'}`}>
                 <div>{getTranslation(language, 'hardExplanation')}</div>
                 <div>{getTranslation(language, 'mediumExplanation')}</div>
@@ -278,7 +289,8 @@ const PracticeGame = ({ onFinish, onBack }) => {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={startGame}
-              className="w-full bg-orange-600 text-white py-4 rounded-xl font-bold text-xl mb-4 shadow-lg"
+              className="w-full text-white py-4 rounded-xl font-bold text-xl mb-4 shadow-lg"
+              style={{ backgroundColor: '#A0826D' }}
             >
               {getTranslation(language, 'startPractice')}
             </motion.button>
@@ -287,7 +299,8 @@ const PracticeGame = ({ onFinish, onBack }) => {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={onBack}
-              className="w-full bg-gray-500 text-white py-3 rounded-xl font-medium"
+              className="w-full text-white py-3 rounded-xl font-medium"
+              style={{ backgroundColor: '#8B6F47' }}
             >
               {getTranslation(language, 'backToMenu')}
             </motion.button>
@@ -299,13 +312,14 @@ const PracticeGame = ({ onFinish, onBack }) => {
 
   // Game screen
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-screen bg-gradient-to-br from-orange-500 to-red-500 flex flex-col"
+      className="min-h-screen flex flex-col"
+      style={{ backgroundColor: '#FFF8F3' }}
     >
       {/* Header with timer and score */}
-      <div className="text-center py-6 text-white relative">
+      <div className="text-center py-6 relative" style={{ color: '#6B5D54' }}>
         <div className="flex justify-between items-center px-6 mb-4">
           <div className="text-2xl font-bold">
             {getTranslation(language, 'score')}: {gameState.score}
@@ -319,18 +333,20 @@ const PracticeGame = ({ onFinish, onBack }) => {
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            className="bg-yellow-400 text-yellow-800 px-4 py-1 rounded-full text-sm font-bold inline-block"
+            className="px-4 py-1 rounded-full text-sm font-bold inline-block"
+            style={{ backgroundColor: '#F5E6D3', color: '#8B6F47', border: '2px solid #A0826D' }}
           >
             {getTranslation(language, 'streak')} {gameState.streak}
           </motion.div>
         )}
 
         {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white bg-opacity-30">
+        <div className="absolute bottom-0 left-0 right-0 h-1" style={{ backgroundColor: '#F5E6D3' }}>
           <motion.div
             initial={{ width: "100%" }}
             animate={{ width: `${(gameState.timeLeft / 60) * 100}%` }}
-            className="h-full bg-white"
+            className="h-full"
+            style={{ backgroundColor: '#A0826D' }}
           />
         </div>
       </div>
@@ -344,22 +360,27 @@ const PracticeGame = ({ onFinish, onBack }) => {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="bg-white rounded-3xl p-8 shadow-2xl max-w-md w-full relative"
+              className="rounded-3xl p-8 shadow-2xl max-w-md w-full relative"
+              style={{ backgroundColor: '#F5E6D3' }}
             >
               {/* Difficulty indicator */}
               <div className={`absolute top-4 ${language === 'he' ? 'left-4' : 'right-4'}`}>
-                <div className={`px-3 py-1 rounded-full text-sm font-bold ${
-                  gameState.currentExplanationLevel === 0 ? 'bg-red-100 text-red-800' :
-                  gameState.currentExplanationLevel === 1 ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-green-100 text-green-800'
-                }`}>
+                <div className="px-3 py-1 rounded-full text-sm font-bold"
+                  style={{
+                    backgroundColor: gameState.currentExplanationLevel === 0 ? '#D4A5A5' :
+                                    gameState.currentExplanationLevel === 1 ? '#F5E6D3' :
+                                    '#B8D4B8',
+                    color: gameState.currentExplanationLevel === 1 ? '#8B6F47' : '#FFF8F3',
+                    border: gameState.currentExplanationLevel === 1 ? '2px solid #A0826D' : 'none'
+                  }}
+                >
                   {gameState.currentExplanationLevel === 0 ? getTranslation(language, 'hard') :
-                   gameState.currentExplanationLevel === 1 ? getTranslation(language, 'medium') : 
+                   gameState.currentExplanationLevel === 1 ? getTranslation(language, 'medium') :
                    getTranslation(language, 'easy')}
                 </div>
               </div>
 
-              <div className="text-2xl font-bold text-center text-gray-800 mt-6 leading-relaxed" dir="rtl">
+              <div className="text-2xl font-bold text-center mt-6 leading-relaxed" dir="rtl" style={{ color: '#6B5D54' }}>
                 {currentExplanation}
               </div>
             </motion.div>
@@ -369,18 +390,22 @@ const PracticeGame = ({ onFinish, onBack }) => {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className={`bg-white rounded-3xl p-8 shadow-2xl max-w-md w-full text-center ${
-                gameState.lastGuessCorrect ? 'border-4 border-green-500' : 'border-4 border-red-500'
-              }`}
+              className="rounded-3xl p-8 shadow-2xl max-w-md w-full text-center border-4"
+              style={{
+                backgroundColor: '#F5E6D3',
+                borderColor: gameState.lastGuessCorrect ? '#B8D4B8' : '#D4A5A5'
+              }}
             >
-              <div className={`text-6xl mb-4 ${gameState.lastGuessCorrect ? 'text-green-500' : 'text-red-500'}`}>
+              <div className="text-6xl mb-4"
+                style={{ color: gameState.lastGuessCorrect ? '#B8D4B8' : '#D4A5A5' }}
+              >
                 {gameState.lastGuessCorrect ? '✅' : '❌'}
               </div>
-              <div className="text-2xl font-bold text-gray-800 mb-2">
+              <div className="text-2xl font-bold mb-2" style={{ color: '#6B5D54' }}>
                 {currentWord.word}
               </div>
               {gameState.lastGuessCorrect && (
-                <div className="text-lg text-green-600 font-medium">
+                <div className="text-lg font-medium" style={{ color: '#8B6F47' }}>
                   +{gameState.wordsUsed[gameState.wordsUsed.length - 1]?.points || 0} {getTranslation(language, 'points')}
                 </div>
               )}
@@ -398,7 +423,12 @@ const PracticeGame = ({ onFinish, onBack }) => {
               value={gameState.currentGuess}
               onChange={(e) => setGameState(prev => ({ ...prev, currentGuess: e.target.value }))}
               onKeyPress={(e) => e.key === 'Enter' && submitGuess()}
-              className="flex-1 p-4 rounded-xl border-2 border-white text-center text-xl font-bold"
+              className="flex-1 p-4 rounded-xl border-2 text-center text-xl font-bold"
+              style={{
+                borderColor: '#A0826D',
+                backgroundColor: '#F5E6D3',
+                color: '#6B5D54'
+              }}
               placeholder={getTranslation(language, 'yourAnswer')}
               dir={language === 'he' ? 'rtl' : 'ltr'}
               autoFocus
@@ -411,16 +441,20 @@ const PracticeGame = ({ onFinish, onBack }) => {
               whileTap={{ scale: 0.95 }}
               onClick={submitGuess}
               disabled={!gameState.currentGuess.trim()}
-              className="flex-1 bg-green-500 text-white py-4 rounded-xl font-bold text-xl disabled:bg-gray-400 shadow-lg"
+              className="flex-1 text-white py-4 rounded-xl font-bold text-xl shadow-lg"
+              style={{
+                backgroundColor: !gameState.currentGuess.trim() ? '#A0826D80' : '#B8D4B8'
+              }}
             >
               {getTranslation(language, 'submit')}
             </motion.button>
-            
+
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.95 }}
               onClick={skipWord}
-              className="flex-1 bg-red-500 text-white py-4 rounded-xl font-bold text-xl shadow-lg"
+              className="flex-1 text-white py-4 rounded-xl font-bold text-xl shadow-lg"
+              style={{ backgroundColor: '#D4A5A5' }}
             >
               {getTranslation(language, 'skipWord')}
             </motion.button>

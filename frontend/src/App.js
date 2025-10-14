@@ -4,8 +4,18 @@ import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { getTranslation } from './locales/translations';
 import { useWordPool } from './locales/words';
 import LanguageToggle from './components/LanguageToggle';
-import PracticeGame from './components/PracticeGame';
-import { PracticeResults, Leaderboard } from './components/PracticeResults';
+import GameRules from './components/GameRules';
+import {
+  trackScreenView,
+  trackGameStarted,
+  trackTeamAdded,
+  trackTurnStarted,
+  trackTurnCompleted,
+  trackGameCompleted,
+  trackGameReset,
+  trackWordGuessed,
+  trackWordSkipped
+} from './analytics';
 
 const DEFAULT_GAME_SETTINGS = Object.freeze({
   winningPosition: 30,
@@ -26,11 +36,11 @@ const createInitialState = (overrides = {}) => {
     currentWord: '',
     wordsGuessed: 0,
     wordsSkipped: 0,
-    practiceResults: null,
     gameOver: false,
     finalRoundTurns: null,
     finalRoundLeaderId: null,
     startingTeamId: null,
+    createdAt: Date.now(),
     gameSettings: { ...DEFAULT_GAME_SETTINGS, ...gameSettings },
     ...rest
   };
@@ -101,12 +111,6 @@ const useGameStore = () => {
   }, [ensureReady]);
 
   // CLIENT-SIDE FUNCTIONS (All instant!)
-  const createNewGame = useCallback(() => {
-    const gameId = generateGameId();
-    setGameState(() => createInitialState({ gameId }));
-    return gameId;
-  }, []);
-
   const addTeam = useCallback((name, color) => {
     setGameState(prev => {
       const existingTeams = Array.isArray(prev.teams) ? prev.teams : [];
@@ -120,6 +124,9 @@ const useGameStore = () => {
         turnsPlayed: 0
       };
 
+      // Track team added
+      trackTeamAdded(existingTeams.length + 1, color);
+
       return {
         ...prev,
         gameId: prev.gameId || generateGameId(),
@@ -131,30 +138,35 @@ const useGameStore = () => {
   const startGame = useCallback(async () => {
     await ensureReady();
     const initialWord = getCurrentWord() || getNextWord() || '';
-    setGameState(prev => ({
-      ...prev,
-      gameStarted: true,
-      currentScreen: 'game',
-      currentTeam: 0,
-      turnScore: 0,
-      wordsGuessed: 0,
-      wordsSkipped: 0,
-      currentWord: initialWord,
-      timeLeft: prev.gameSettings.turnDuration,
-      winner: null,
-      gameOver: false,
-      finalRoundTurns: null,
-      finalRoundLeaderId: null,
-      startingTeamId: null  // Will be set when first turn is taken
-    }));
-  }, [ensureReady, getCurrentWord, getNextWord]);
+    setGameState(prev => {
+      // Track game started
+      trackGameStarted(prev.teams.length, language);
+
+      return {
+        ...prev,
+        gameStarted: true,
+        currentScreen: 'game',
+        currentTeam: 0,
+        turnScore: 0,
+        wordsGuessed: 0,
+        wordsSkipped: 0,
+        currentWord: initialWord,
+        timeLeft: prev.gameSettings.turnDuration,
+        winner: null,
+        gameOver: false,
+        finalRoundTurns: null,
+        finalRoundLeaderId: null,
+        startingTeamId: null  // Will be set when first turn is taken
+      };
+    });
+  }, [ensureReady, getCurrentWord, getNextWord, language]);
 
   const startTurn = useCallback(async (teamIndex) => {
     if (gameState.gameOver) {
       return;
     }
     await ensureReady();
-    const startingWord = getCurrentWord() || getNextWord() || '';
+    const startingWord = getNextWord() || '';
 
     setGameState(prev => {
       if (prev.gameOver) {
@@ -164,6 +176,10 @@ const useGameStore = () => {
       // Set starting team on first turn
       const isFirstTurn = prev.startingTeamId === null;
       const newStartingTeamId = isFirstTurn ? prev.teams[teamIndex]?.id : prev.startingTeamId;
+
+      const team = prev.teams[teamIndex];
+      // Track turn started
+      trackTurnStarted(team?.name || `Team ${teamIndex + 1}`, team?.turnsPlayed + 1 || 1);
 
       return {
         ...prev,
@@ -177,17 +193,22 @@ const useGameStore = () => {
         startingTeamId: newStartingTeamId
       };
     });
-  }, [ensureReady, getCurrentWord, getNextWord, gameState.gameOver]);
+  }, [ensureReady, getNextWord, gameState.gameOver]);
 
   const handleGotIt = useCallback(() => {
     if (gameState.gameOver) {
       return;
     }
     const nextWord = getNextWord() || '';
+
     setGameState(prev => {
       if (prev.gameOver) {
         return prev;
       }
+
+      // Track word guessed
+      trackWordGuessed(prev.timeLeft);
+
       return {
         ...prev,
         turnScore: prev.turnScore + 1,
@@ -195,17 +216,22 @@ const useGameStore = () => {
         currentWord: nextWord
       };
     });
-  }, [getNextWord, gameState.gameOver]);
+  }, [getNextWord, gameState.gameOver, gameState.timeLeft]);
 
   const handleSkip = useCallback(() => {
     if (gameState.gameOver) {
       return;
     }
     const nextWord = getNextWord() || '';
+
     setGameState(prev => {
       if (prev.gameOver) {
         return prev;
       }
+
+      // Track word skipped
+      trackWordSkipped(prev.timeLeft);
+
       return {
         ...prev,
         turnScore: Math.max(0, prev.turnScore - 1),
@@ -213,7 +239,7 @@ const useGameStore = () => {
         currentWord: nextWord
       };
     });
-  }, [getNextWord, gameState.gameOver]);
+  }, [getNextWord, gameState.gameOver, gameState.timeLeft]);
 
   // End a turn, handling final-round logic and overflow scoring
   const endTurn = useCallback(() => {
@@ -230,6 +256,15 @@ const useGameStore = () => {
       }
 
       const finalScore = prev.wordsGuessed - prev.wordsSkipped;
+
+      // Track turn completed
+      trackTurnCompleted(
+        currentTeam.name,
+        prev.wordsGuessed,
+        prev.wordsSkipped,
+        finalScore
+      );
+
       const updatedTeams = prev.teams.map((team, index) => {
         if (index !== currentTeamIndex) {
           return team;
@@ -293,6 +328,10 @@ const useGameStore = () => {
         gameOver = true;
         currentScreen = 'end';
         nextTeamIndex = currentTeamIndex;
+
+        // Track game completed
+        const totalTurns = updatedTeams.reduce((sum, team) => sum + team.turnsPlayed, 0);
+        trackGameCompleted(winnerName, totalTurns, Date.now() - (prev.createdAt || Date.now()));
       } else if (roundComplete) {
         // Final round complete - all teams have equal turns
         console.log('🏁 Final round complete!');
@@ -304,6 +343,10 @@ const useGameStore = () => {
         nextTeamIndex = winningTeam
           ? updatedTeams.findIndex(team => team.id === winningTeam.id)
           : currentTeamIndex;
+
+        // Track game completed
+        const totalTurns = updatedTeams.reduce((sum, team) => sum + team.turnsPlayed, 0);
+        trackGameCompleted(winnerName, totalTurns, Date.now() - (prev.createdAt || Date.now()));
       }
 
       return {
@@ -328,30 +371,13 @@ const useGameStore = () => {
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem('aliasGameState');
     }
+
+    // Track game reset
+    trackGameReset();
+
     setGameState(() => createInitialState());
     initializeWords();
   }, [initializeWords]);
-
-  // Practice mode functions
-  const startPractice = useCallback(() => {
-    setGameState(prev => ({ ...prev, currentScreen: 'practice' }));
-  }, []);
-
-  const finishPractice = useCallback((results) => {
-    setGameState(prev => ({
-      ...prev,
-      currentScreen: 'practice-results',
-      practiceResults: results
-    }));
-  }, []);
-
-  const showLeaderboard = useCallback(() => {
-    setGameState(prev => ({ ...prev, currentScreen: 'leaderboard' }));
-  }, []);
-
-  const backToHome = useCallback(() => {
-    setGameState(prev => ({ ...prev, currentScreen: 'home', practiceResults: null }));
-  }, []);
 
   return {
     gameState,
@@ -362,11 +388,7 @@ const useGameStore = () => {
     endTurn,
     handleGotIt,
     handleSkip,
-    resetGame, // Make sure resetGame is included in the return
-    startPractice,
-    finishPractice,
-    showLeaderboard,
-    backToHome,
+    resetGame,
     wordPoolReady,
     wordPoolLoading,
     wordPoolError
@@ -378,6 +400,7 @@ const HomeScreen = ({ gameStore }) => {
   const { language } = useLanguage();
   const [teamName, setTeamName] = useState('');
   const [selectedColor, setSelectedColor] = useState('#E8B4B8');
+  const [showRules, setShowRules] = useState(false);
 
   const colors = ['#E8B4B8', '#A8C09A', '#A0826D', '#8B6F47', '#6B5D54', '#D4A5A5'];
 
@@ -411,17 +434,17 @@ const HomeScreen = ({ gameStore }) => {
         </motion.h1>
         
         <div className="space-y-6">
-          {/* Practice Button */}
+          {/* Game Rules Button */}
           <motion.button
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={gameStore.startPractice}
+            onClick={() => setShowRules(true)}
             className="w-full text-white py-4 rounded-lg font-bold text-xl transition-colors shadow-lg flex items-center justify-center gap-3"
             style={{ backgroundColor: '#A0826D' }}
           >
-            {getTranslation(language, 'practiceMode')}
+            {getTranslation(language, 'gameRules')}
           </motion.button>
 
           {/* Divider */}
@@ -543,6 +566,9 @@ const HomeScreen = ({ gameStore }) => {
           )}
         </div>
       </div>
+
+      {/* Game Rules Modal */}
+      <GameRules isOpen={showRules} onClose={() => setShowRules(false)} />
     </motion.div>
   );
 };
@@ -970,6 +996,16 @@ const EndScreen = ({ gameStore }) => {
 // Main Game Component
 const GameWithLanguage = () => {
   const gameStore = useGameStore();
+  const { language } = useLanguage();
+
+  // Track screen views whenever currentScreen changes
+  useEffect(() => {
+    trackScreenView(gameStore.gameState.currentScreen, {
+      language,
+      teamCount: gameStore.gameState.teams.length,
+      gameStarted: gameStore.gameState.gameStarted
+    });
+  }, [gameStore.gameState.currentScreen, language, gameStore.gameState.teams.length, gameStore.gameState.gameStarted]);
 
   const renderScreen = () => {
     switch (gameStore.gameState.currentScreen) {
@@ -981,32 +1017,6 @@ const GameWithLanguage = () => {
         return <TurnScreen gameStore={gameStore} />;
       case 'end':
         return <EndScreen gameStore={gameStore} />;
-      case 'practice':
-        return (
-          <PracticeGame 
-            onFinish={gameStore.finishPractice}
-            onBack={gameStore.backToHome}
-          />
-        );
-      case 'practice-results':
-        return (
-          <PracticeResults 
-            results={gameStore.gameState.practiceResults}
-            onPlayAgain={gameStore.startPractice}
-            onBack={gameStore.backToHome}
-            onShowLeaderboard={gameStore.showLeaderboard}
-          />
-        );
-      case 'leaderboard':
-        return (
-          <Leaderboard 
-            onBack={() => gameStore.gameState.practiceResults ? 
-              gameStore.finishPractice(gameStore.gameState.practiceResults) : 
-              gameStore.backToHome()
-            }
-            currentScore={gameStore.gameState.practiceResults?.score}
-          />
-        );
       default:
         return <HomeScreen gameStore={gameStore} />;
     }
